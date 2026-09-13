@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#111111" />
-  <title>LASERTOOL v6.2</title>
-  <link rel="stylesheet" href="style.css?v=6.2" />
+  <title>LASERTOOL v6.4</title>
+  <link rel="stylesheet" href="style.css?v=6.4" />
 </head>
 <body>
 
@@ -37,7 +37,7 @@
       <div class="title-wrap">
         <div class="title-row">
           <div>
-            <h1>雷雕圖片轉換器 v6.2</h1>
+            <h1>雷雕圖片轉換器 v6.4</h1>
             <p id="modeDesc">目前模式：網點模式</p>
           </div>
           <button id="backModeBtn" class="back-mode-btn" type="button">← 重選模式</button>
@@ -160,7 +160,7 @@
             <output id="outlineExpandValue">6 px</output>
           </div>
           <input id="outlineExpand" type="range" min="1" max="40" value="6" />
-          <div class="hint">外框固定依原圖最外圍產生；調整網點、對比等參數時，內部不會再跑出額外框線。</div>
+          <div class="hint">外框會把主圖與文字視為同一個整體，只畫最外圍一條線，且不會超出圖片邊界。</div>
         </div>      </div>
 
       <div class="buttons export-buttons">
@@ -226,6 +226,6 @@
     };
   </script>
 
-  <script src="app.js?v=6.2"></script>
+  <script src="app.js?v=6.4"></script>
 </body>
 </html>

@@ -193,6 +193,7 @@ function handleFile(file) {
     emptyState.hidden = true;
     canvas.hidden = false;
     [jpgBtn,pngBtn,dxfBtn,resetBtn,toggleOriginalBtn].forEach(b => b.disabled = false);
+  updateOutlineExpandLimit();
 
     imageInfo.textContent =
       `${image.naturalWidth} × ${image.naturalHeight}px` +
@@ -255,8 +256,48 @@ function queueRender() {
   renderTimer = setTimeout(render, 30);
 }
 
+function getMaxSafeOutlineExpand() {
+  if (!canvas.width || !canvas.height) return 40;
+
+  // 依目前主體與畫布邊界距離，估算安全最大外擴量。
+  const w = canvas.width, h = canvas.height;
+  const subject = buildSubjectMaskFromSource(w,h);
+
+  let minX=w, minY=h, maxX=-1, maxY=-1;
+  for (let i=0; i<subject.length; i++) {
+    if (!subject[i]) continue;
+    const x=i%w, y=(i/w)|0;
+    if (x<minX) minX=x;
+    if (x>maxX) maxX=x;
+    if (y<minY) minY=y;
+    if (y>maxY) maxY=y;
+  }
+
+  if (maxX < 0) return 40;
+
+  const margin = Math.max(
+    1,
+    Math.floor(Math.min(minX, minY, w-1-maxX, h-1-maxY) - 2)
+  );
+
+  return Math.min(40, margin);
+}
+
+function updateOutlineExpandLimit() {
+  if (!img) return;
+
+  const maxSafe = getMaxSafeOutlineExpand();
+  outlineExpand.max = Math.max(1, maxSafe);
+
+  if (+outlineExpand.value > +outlineExpand.max) {
+    outlineExpand.value = outlineExpand.max;
+    outlineExpandValue.value = `${outlineExpand.value} px`;
+  }
+}
+
 function render() {
   if (!img || !currentMode) return;
+  updateOutlineExpandLimit();
   showingOriginal = false;
   toggleOriginalBtn.classList.remove("active");
   toggleOriginalBtn.textContent = "查看原圖";
@@ -358,17 +399,25 @@ function applyExpandedOutline() {
    */
   const subject = buildSubjectMaskFromSource(w,h);
 
-  // 將原圖外圍線條的小缺口補起來，避免背景 flood fill 穿入主體內部。
-  const bridgeRadius = Math.max(2, Math.min(6, Math.round(Math.min(w,h) / 350)));
-  let closed = binaryDilate(subject,w,h,bridgeRadius);
-  closed = binaryErode(closed,w,h,bridgeRadius);
+  // 先移除非常小的雜點，但保留文字的筆畫。
+  let grouped = removeTinyComponents(subject,w,h);
 
-  // 保留主要主體，避免背景上的零碎雜點各自產生外框。
-  closed = keepLargestComponent(closed,w,h);
+  // v6.3：把彼此相近的主圖、標題與副標文字視為同一個整體。
+  // 先向外膨脹讓相近元件接在一起，再只保留最大的「整體群組」，
+  // 最後縮回去，這樣文字也會被外框包進去。
+  const groupRadius = Math.max(8, Math.min(28, Math.round(Math.min(w,h) / 32)));
+  grouped = binaryDilate(grouped,w,h,groupRadius);
+  grouped = keepLargestComponent(grouped,w,h);
+  grouped = binaryErode(grouped,w,h,groupRadius);
 
-  // 將主要主體內部全部視為同一塊實心區域。
-  // 眼睛、嘴巴、衣服、網點、白色孔洞等都不會被描框。
-  const outerSolid = fillInternalHoles(closed,w,h);
+  // 再做一次小幅閉運算，補起字與圖形邊緣的小缺口。
+  const bridgeRadius = Math.max(2, Math.min(5, Math.round(Math.min(w,h) / 420)));
+  grouped = binaryDilate(grouped,w,h,bridgeRadius);
+  grouped = binaryErode(grouped,w,h,bridgeRadius);
+
+  // 將整個群組內部視為實心區域，只留下最外圍輪廓。
+  // 內部圖案、文字孔洞、眼睛、網點等不會另外描框。
+  const outerSolid = fillInternalHoles(grouped,w,h);
 
   const expand = Math.max(1, +outlineExpand.value);
   const dist = distanceFromSolid(outerSolid,w,h);
@@ -379,8 +428,24 @@ function applyExpandedOutline() {
   const inner = Math.max(0, expand - lineWidth / 2);
 
   const out = ctx.getImageData(0,0,w,h);
+
+  // 外框永遠限制在圖片畫布內。
+  // 保留 1px 安全邊界，避免線條貼到邊緣時被瀏覽器/匯出裁切。
+  const safeMargin = 1;
+
   for (let i=0; i<outerSolid.length; i++) {
     if (outerSolid[i]) continue;
+
+    const x = i % w;
+    const y = (i / w) | 0;
+
+    if (
+      x < safeMargin ||
+      y < safeMargin ||
+      x >= w - safeMargin ||
+      y >= h - safeMargin
+    ) continue;
+
     const d = dist[i];
     if (d >= inner && d <= outer) {
       const p=i*4;
@@ -434,6 +499,49 @@ function buildSubjectMaskFromSource(w,h) {
   }
 
   return mask;
+}
+
+function removeTinyComponents(mask,w,h) {
+  const seen = new Uint8Array(mask.length);
+  const q = new Int32Array(mask.length);
+  const out = new Uint8Array(mask.length);
+
+  // 門檻故意很低：只移除零碎噪點，保留中文字、英文字母與細線。
+  const minArea = Math.max(3, Math.round((w*h) / 180000));
+
+  for (let i=0; i<mask.length; i++) {
+    if (!mask[i] || seen[i]) continue;
+
+    let head=0, tail=0;
+    q[tail++]=i;
+    seen[i]=1;
+    const component=[];
+
+    while (head<tail) {
+      const idx=q[head++];
+      component.push(idx);
+      const x=idx%w, y=(idx/w)|0;
+
+      const neighbors=[
+        idx-1, idx+1, idx-w, idx+w,
+        idx-w-1, idx-w+1, idx+w-1, idx+w+1
+      ];
+
+      for (const ni of neighbors) {
+        if (ni<0 || ni>=mask.length || seen[ni] || !mask[ni]) continue;
+        const nx=ni%w, ny=(ni/w)|0;
+        if (Math.abs(nx-x)>1 || Math.abs(ny-y)>1) continue;
+        seen[ni]=1;
+        q[tail++]=ni;
+      }
+    }
+
+    if (component.length >= minArea) {
+      for (const idx of component) out[idx]=1;
+    }
+  }
+
+  return out;
 }
 
 function keepLargestComponent(mask,w,h) {
