@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#111111" />
-  <title>LASERTOOL v5.4</title>
-  <link rel="stylesheet" href="style.css?v=5.4" />
+  <title>LASERTOOL v5.6</title>
+  <link rel="stylesheet" href="style.css?v=5.6" />
 </head>
 <body>
 
@@ -37,7 +37,7 @@
       <div class="title-wrap">
         <div class="title-row">
           <div>
-            <h1>雷雕圖片轉換器 v5.4</h1>
+            <h1>雷雕圖片轉換器 v5.6</h1>
             <p id="modeDesc">目前模式：網點模式</p>
           </div>
           <button id="backModeBtn" class="back-mode-btn" type="button">← 重選模式</button>
@@ -163,10 +163,11 @@
           <div class="hint">複製目前黑色圖形的外輪廓，再向外擴張指定像素。</div>
 
           <div class="control-head outline-width-head">
-            <label for="outlineWidth">外框粗細</label>
-            <output id="outlineWidthValue">2 px</output>
+            <label for="outlineSmooth">外框圓滑程度</label>
+            <output id="outlineSmoothValue">2</output>
           </div>
-          <input id="outlineWidth" type="range" min="1" max="8" value="2" />
+          <input id="outlineSmooth" type="range" min="0" max="8" value="2" />
+          <div class="hint">數值越高，外框會越平順，尖角與細碎凹凸會減少。</div>
         </div>      </div>
 
       <div class="buttons export-buttons">
@@ -183,7 +184,10 @@
 
     <section class="panel preview-panel">
       <div class="preview-header">
-        <h2>預覽</h2>
+        <div class="preview-title-actions">
+          <h2>預覽</h2>
+          <button id="toggleOriginalBtn" class="preview-toggle-btn" type="button" disabled>查看原圖</button>
+        </div>
         <span id="imageInfo">尚未載入圖片</span>
       </div>
 
@@ -229,6 +233,6 @@
     };
   </script>
 
-  <script src="app.js?v=5.4"></script>
+  <script src="app.js?v=5.6"></script>
 </body>
 </html>

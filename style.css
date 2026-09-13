@@ -270,3 +270,27 @@ button:disabled{opacity:.42;cursor:not-allowed}
 }
 .outline-controls .control-head{margin-bottom:8px}
 .outline-width-head{margin-top:15px}
+
+.preview-title-actions{
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+.preview-toggle-btn{
+  border:1px solid var(--border);
+  background:#29292e;
+  color:#fff;
+  border-radius:9px;
+  padding:7px 11px;
+  font-size:12px;
+  font-weight:800;
+}
+.preview-toggle-btn:hover:not(:disabled){
+  border-color:#fff;
+  background:#34343a;
+}
+.preview-toggle-btn.active{
+  background:#fff;
+  color:#111;
+  border-color:#fff;
+}

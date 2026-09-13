@@ -18,6 +18,7 @@ const alphaCtx = alphaCanvas.getContext("2d");
 const emptyState = $("emptyState");
 const imageInfo = $("imageInfo");
 const resultLabel = $("resultLabel");
+const toggleOriginalBtn = $("toggleOriginalBtn");
 
 const jpgBtn = $("jpgBtn");
 const pngBtn = $("pngBtn");
@@ -50,8 +51,8 @@ const outlineMode = $("outlineMode");
 const outlineControls = $("outlineControls");
 const outlineExpand = $("outlineExpand");
 const outlineExpandValue = $("outlineExpandValue");
-const outlineWidth = $("outlineWidth");
-const outlineWidthValue = $("outlineWidthValue");
+const outlineSmooth = $("outlineSmooth");
+const outlineSmoothValue = $("outlineSmoothValue");
 const halftoneControls = $("halftoneControls");
 const lineartControls = $("lineartControls");
 
@@ -61,6 +62,7 @@ let img = null;
 let currentMode = window.LASERTOOL_SELECTED_MODE || null;
 let currentShape = "dots";
 let renderTimer = null;
+let showingOriginal = false;
 
 // 模式按鈕由 index.html 的 LASERTOOL_ENTER() 直接處理。
 window.addEventListener("lasertool-mode-change", (event) => {
@@ -93,6 +95,23 @@ function enterMode(mode) {
 
   render();
 }
+
+toggleOriginalBtn.addEventListener("click", () => {
+  if (!img) return;
+  showingOriginal = !showingOriginal;
+  toggleOriginalBtn.classList.toggle("active", showingOriginal);
+  toggleOriginalBtn.textContent = showingOriginal ? "返回處理結果" : "查看原圖";
+  resultLabel.textContent = showingOriginal
+    ? "原圖"
+    : (currentMode === "halftone" ? "網點結果" : "黑線稿結果");
+
+  if (showingOriginal) {
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.drawImage(sourceCanvas,0,0);
+  } else {
+    render();
+  }
+});
 
 fileInput.addEventListener("change", e => handleFile(e.target.files?.[0]));
 
@@ -135,8 +154,8 @@ outlineExpand.addEventListener("input", () => {
   queueRender();
 });
 
-outlineWidth.addEventListener("input", () => {
-  outlineWidthValue.value = `${outlineWidth.value} px`;
+outlineSmooth.addEventListener("input", () => {
+  outlineSmoothValue.value = outlineSmooth.value;
   queueRender();
 });
 
@@ -179,7 +198,7 @@ function handleFile(file) {
 
     emptyState.hidden = true;
     canvas.hidden = false;
-    [jpgBtn,pngBtn,dxfBtn,resetBtn].forEach(b => b.disabled = false);
+    [jpgBtn,pngBtn,dxfBtn,resetBtn,toggleOriginalBtn].forEach(b => b.disabled = false);
 
     imageInfo.textContent =
       `${image.naturalWidth} × ${image.naturalHeight}px` +
@@ -198,6 +217,9 @@ function handleFile(file) {
 }
 
 function resetControls() {
+  showingOriginal = false;
+  toggleOriginalBtn.classList.remove("active");
+  toggleOriginalBtn.textContent = "查看原圖";
   threshold.value = 128;
   cellSize.value = 8;
   contrast.value = 0;
@@ -225,8 +247,8 @@ function resetControls() {
   outlineControls.hidden = true;
   outlineExpand.value = 6;
   outlineExpandValue.value = "6 px";
-  outlineWidth.value = 2;
-  outlineWidthValue.value = "2 px";
+  outlineSmooth.value = 2;
+  outlineSmoothValue.value = "2";
   majorOutline.checked = false;
 
   currentShape = "dots";
@@ -243,6 +265,10 @@ function queueRender() {
 
 function render() {
   if (!img || !currentMode) return;
+  showingOriginal = false;
+  toggleOriginalBtn.classList.remove("active");
+  toggleOriginalBtn.textContent = "查看原圖";
+  resultLabel.textContent = currentMode === "halftone" ? "網點結果" : "黑線稿結果";
   if (currentMode === "lineart") renderLineArt();
   else renderHalftone();
 }
@@ -340,10 +366,17 @@ function applyExpandedOutline() {
   }
 
   const expand = Math.max(1, +outlineExpand.value);
-  const width = Math.max(1, +outlineWidth.value);
+  const smoothness = Math.max(0, +outlineSmooth.value);
 
-  const expanded = binaryDilate(mask,w,h,expand);
-  const inner = binaryErode(expanded,w,h,width);
+  let expanded = binaryDilate(mask,w,h,expand);
+
+  // 圓滑處理：重複進行閉運算與鄰域平滑，降低鋸齒與尖角。
+  if (smoothness > 0) {
+    expanded = smoothBinaryMask(expanded,w,h,smoothness);
+  }
+
+  // 外框固定為約 2px，避免圓滑程度影響線寬。
+  const inner = binaryErode(expanded,w,h,2);
 
   const out = ctx.getImageData(0,0,w,h);
   for (let i=0; i<mask.length; i++) {
@@ -355,6 +388,44 @@ function applyExpandedOutline() {
     out.data[p+3]=255;
   }
   ctx.putImageData(out,0,0);
+}
+
+function smoothBinaryMask(src,w,h,passes) {
+  let current = src;
+
+  for (let p=0; p<passes; p++) {
+    // closing：先膨脹再侵蝕，填平小凹洞
+    current = binaryErode(binaryDilate(current,w,h,1),w,h,1);
+
+    // 多數決濾波：削掉鋸齒與孤立尖點
+    const out = new Uint8Array(current.length);
+
+    for (let y=0; y<h; y++) {
+      for (let x=0; x<w; x++) {
+        let count = 0;
+        let total = 0;
+
+        for (let yy=-1; yy<=1; yy++) {
+          const ny = y + yy;
+          if (ny < 0 || ny >= h) continue;
+
+          for (let xx=-1; xx<=1; xx++) {
+            const nx = x + xx;
+            if (nx < 0 || nx >= w) continue;
+
+            total++;
+            count += current[ny*w + nx];
+          }
+        }
+
+        out[y*w + x] = count >= Math.ceil(total * 0.5) ? 1 : 0;
+      }
+    }
+
+    current = out;
+  }
+
+  return current;
 }
 
 function binaryDilate(src,w,h,radius) {
