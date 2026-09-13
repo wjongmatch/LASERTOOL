@@ -407,3 +407,114 @@ button:disabled{opacity:.42;cursor:not-allowed}
   .preview-title-actions{flex-wrap:wrap;}
   .preview-viewport{min-height:320px;}
 }
+
+
+/* v6.13 品牌版面 */
+.mode-gate-logo-centered{
+  width:100%;
+  text-align:center !important;
+  margin-left:auto;
+  margin-right:auto;
+}
+
+/* 首頁校徽放大 */
+.school-brand{
+  gap:20px !important;
+  padding:20px 24px !important;
+  max-width:520px !important;
+}
+.school-logo-wrap{
+  width:104px !important;
+  height:104px !important;
+}
+.school-logo{
+  width:96px !important;
+  height:96px !important;
+}
+.school-brand-text strong{
+  font-size:26px !important;
+}
+.school-brand-text span{
+  margin-top:7px !important;
+  font-size:17px !important;
+}
+
+/* 網點/黑線稿操作頁品牌列 */
+.app-school-brand{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  margin:0 0 18px;
+  padding:12px 14px;
+  border:1px solid var(--border);
+  border-radius:14px;
+  background:rgba(255,255,255,.035);
+}
+.app-school-logo-wrap{
+  position:relative;
+  flex:0 0 auto;
+  width:58px;
+  height:58px;
+  display:grid;
+  place-items:center;
+  border-radius:50%;
+  overflow:hidden;
+  background:#fff;
+  box-shadow:0 3px 12px rgba(0,0,0,.22);
+}
+.app-school-logo{
+  display:block;
+  width:52px;
+  height:52px;
+  object-fit:contain;
+}
+.app-school-logo-fallback{
+  display:none;
+  place-items:center;
+  width:100%;
+  height:100%;
+  color:#b3261e;
+  background:#fff;
+  font-weight:900;
+  font-size:16px;
+}
+.app-school-brand-text{
+  min-width:0;
+  line-height:1.2;
+}
+.app-school-brand-text strong{
+  display:block;
+  color:#fff;
+  font-size:18px;
+  letter-spacing:.04em;
+}
+.app-school-brand-text span{
+  display:block;
+  margin-top:4px;
+  color:var(--muted);
+  font-size:13px;
+  font-weight:700;
+  letter-spacing:.04em;
+}
+
+@media (max-width:560px){
+  .school-brand{
+    gap:14px !important;
+    padding:15px 16px !important;
+  }
+  .school-logo-wrap{
+    width:86px !important;
+    height:86px !important;
+  }
+  .school-logo{
+    width:78px !important;
+    height:78px !important;
+  }
+  .school-brand-text strong{font-size:22px !important;}
+  .school-brand-text span{font-size:14px !important;}
+
+  .app-school-logo-wrap{width:50px;height:50px;}
+  .app-school-logo{width:45px;height:45px;}
+  .app-school-brand-text strong{font-size:16px;}
+  .app-school-brand-text span{font-size:12px;}
+}

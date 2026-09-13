@@ -301,6 +301,7 @@ function handleFile(file) {
 
   image.onload = () => {
     img = image;
+    previewNeedsInitialFit = true;
     const maxDimension = 2400;
     const scale = Math.min(1, maxDimension / Math.max(image.naturalWidth, image.naturalHeight));
     const w = Math.max(1, Math.round(image.naturalWidth * scale));
@@ -323,9 +324,6 @@ function handleFile(file) {
       (scale < 1 ? `（處理尺寸 ${w} × ${h}px）` : "");
 
     render();
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => resetPreviewTransform(true));
-  });
     URL.revokeObjectURL(url);
   };
 
@@ -424,6 +422,12 @@ function updateImageInfo() {
 
 function render() {
   if (!img || !currentMode) return;
+
+  // v6.12：任何處理結果繪製前，都先建立正確的預留畫布尺寸。
+  // 避免第一次匯入仍使用原圖尺寸，造成處理結果被裁切到右下角。
+  setOutputCanvasSize();
+  updateImageInfo();
+
   showingOriginal = false;
   toggleOriginalBtn.classList.remove("active");
   toggleOriginalBtn.textContent = "查看原圖";
