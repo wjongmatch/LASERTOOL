@@ -151,6 +151,13 @@ function resetPreviewTransform(fit = true) {
       vh / sourceCanvas.height
     );
 
+    // 手機上再限制一次：原圖顯示寬度不得超過預覽視窗約 88%。
+    // 避免大圖或預留外框讓預覽看起來把頁面橫向撐開。
+    if (window.innerWidth <= 900) {
+      const mobileSafeWidth = Math.max(1, previewViewport.clientWidth * 0.88);
+      previewScale = Math.min(previewScale, mobileSafeWidth / sourceCanvas.width);
+    }
+
     const pad = getOutputPadding();
 
     // 將「原圖區域」置中在預覽視窗，而不是把整張擴大後畫布置中。

@@ -622,3 +622,73 @@ button:disabled{opacity:.42;cursor:not-allowed}
   .shape-grid,.buttons,.export-buttons{grid-template-columns:1fr!important}
   .export-buttons .secondary{grid-column:auto}
 }
+
+
+/* v6.16 手機預覽寬度修正 */
+@media (max-width:900px){
+  html,body{
+    width:100%;
+    max-width:100%;
+    overflow-x:hidden !important;
+  }
+
+  .app,
+  .panel,
+  .preview-panel,
+  .preview-box,
+  .preview-viewport,
+  .canvas-stage{
+    min-width:0 !important;
+    max-width:100% !important;
+    box-sizing:border-box;
+  }
+
+  .preview-panel{
+    width:100% !important;
+    overflow:hidden !important;
+  }
+
+  .preview-box{
+    width:100% !important;
+    overflow:hidden !important;
+  }
+
+  .preview-viewport{
+    width:100% !important;
+    max-width:100% !important;
+    overflow:hidden !important;
+    contain:layout paint;
+  }
+
+  /* canvas 本身可以很大，但不能撐開手機網頁版面 */
+  .canvas-stage{
+    position:absolute;
+    left:0;
+    top:0;
+    width:0 !important;
+    height:0 !important;
+    max-width:none !important;
+  }
+
+  .canvas-stage canvas{
+    max-width:none !important;
+  }
+}
+
+@media (max-width:600px){
+  .app{
+    width:100% !important;
+    max-width:100% !important;
+    padding:0 6px !important;
+    margin:6px 0 16px !important;
+  }
+
+  .preview-panel{
+    padding:8px !important;
+  }
+
+  .preview-viewport{
+    height:min(42vh,390px) !important;
+    min-height:260px !important;
+  }
+}
