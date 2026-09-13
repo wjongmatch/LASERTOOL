@@ -136,18 +136,44 @@ function applyPreviewTransform() {
 
 function resetPreviewTransform(fit = true) {
   if (!previewViewport || !canvas.width || !canvas.height) return;
-  if (fit) {
-    const margin = 24;
+
+  if (fit && sourceCanvas.width && sourceCanvas.height) {
+    // 匯入圖片時，以「原圖內容」而不是整個預留畫布來計算適合大小。
+    // 這樣即使已預留 50% 外框空間，主圖一開始也不會顯得太小。
+    const margin = 28;
     const vw = Math.max(1, previewViewport.clientWidth - margin * 2);
     const vh = Math.max(1, previewViewport.clientHeight - margin * 2);
-    previewScale = Math.min(1, vw / canvas.width, vh / canvas.height);
+
+    previewScale = Math.min(
+      1,
+      vw / sourceCanvas.width,
+      vh / sourceCanvas.height
+    );
+
+    const pad = getOutputPadding();
+
+    // 將「原圖區域」置中在預覽視窗，而不是把整張擴大後畫布置中。
+    previewOffsetX =
+      previewViewport.clientWidth / 2 -
+      (pad + sourceCanvas.width / 2) * previewScale;
+
+    previewOffsetY =
+      previewViewport.clientHeight / 2 -
+      (pad + sourceCanvas.height / 2) * previewScale;
   } else {
+    // 100%：維持原尺寸，但仍以原圖內容置中。
     previewScale = 1;
+    const pad = getOutputPadding();
+
+    previewOffsetX =
+      previewViewport.clientWidth / 2 -
+      (pad + sourceCanvas.width / 2);
+
+    previewOffsetY =
+      previewViewport.clientHeight / 2 -
+      (pad + sourceCanvas.height / 2);
   }
-  const rw = canvas.width * previewScale;
-  const rh = canvas.height * previewScale;
-  previewOffsetX = Math.max(12, (previewViewport.clientWidth - rw) / 2);
-  previewOffsetY = Math.max(12, (previewViewport.clientHeight - rh) / 2);
+
   applyPreviewTransform();
 }
 
