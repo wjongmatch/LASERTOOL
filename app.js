@@ -46,7 +46,12 @@ const detailFilterValue = $("detailFilterValue");
 const majorOutline = $("majorOutline");
 
 const invert = $("invert");
-const laserMode = $("laserMode");
+const outlineMode = $("outlineMode");
+const outlineControls = $("outlineControls");
+const outlineExpand = $("outlineExpand");
+const outlineExpandValue = $("outlineExpandValue");
+const outlineWidth = $("outlineWidth");
+const outlineWidthValue = $("outlineWidthValue");
 const halftoneControls = $("halftoneControls");
 const lineartControls = $("lineartControls");
 
@@ -118,7 +123,22 @@ dropZone.addEventListener("drop", e => handleFile(e.dataTransfer.files?.[0]));
   });
 });
 
-[invert, laserMode, majorOutline].forEach(el => el.addEventListener("change", render));
+[invert, majorOutline].forEach(el => el.addEventListener("change", render));
+
+outlineMode.addEventListener("change", () => {
+  outlineControls.hidden = !outlineMode.checked;
+  render();
+});
+
+outlineExpand.addEventListener("input", () => {
+  outlineExpandValue.value = `${outlineExpand.value} px`;
+  queueRender();
+});
+
+outlineWidth.addEventListener("input", () => {
+  outlineWidthValue.value = `${outlineWidth.value} px`;
+  queueRender();
+});
 
 
 shapeButtons.forEach(btn => btn.addEventListener("click", () => {
@@ -201,7 +221,12 @@ function resetControls() {
   detailFilterValue.value = 2;
 
   invert.checked = false;
-  laserMode.checked = false;
+  outlineMode.checked = false;
+  outlineControls.hidden = true;
+  outlineExpand.value = 6;
+  outlineExpandValue.value = "6 px";
+  outlineWidth.value = 2;
+  outlineWidthValue.value = "2 px";
   majorOutline.checked = false;
 
   currentShape = "dots";
@@ -239,7 +264,6 @@ function renderHalftone() {
   const t = +threshold.value;
   const c = +contrast.value;
   const ang = +angle.value * Math.PI / 180;
-  const isLaser = laserMode.checked;
 
   for (let y = 0; y < h; y += size) {
     for (let x = 0; x < w; x += size) {
@@ -247,19 +271,15 @@ function renderHalftone() {
       let darkness = 1 - brightness / 255;
       darkness = clamp(darkness + ((t - 128) / 128) * 0.55, 0, 1);
 
-      if (isLaser) {
-        darkness = darkness < 0.16 ? 0 : darkness;
-        darkness = darkness > 0.86 ? 1 : darkness;
-      }
-
       if (invert.checked) darkness = 1 - darkness;
       if (darkness < 0.035) continue;
 
-      drawCell(x,y,size,darkness,currentShape,ang,isLaser);
+      drawCell(x,y,size,darkness,currentShape,ang,false);
     }
   }
 
   ctx.restore();
+  if (outlineMode.checked) applyExpandedOutline();
 }
 
 function renderLineArt() {
@@ -292,10 +312,6 @@ function renderLineArt() {
     binary = dilate(binary,w,h,thickness - 1);
   }
 
-  if (laserMode.checked) {
-    binary = removeSparse(binary,w,h,2);
-  }
-
   const out = ctx.createImageData(w,h);
   for (let i = 0; i < binary.length; i++) {
     const isBlack = invert.checked ? !binary[i] : !!binary[i];
@@ -308,6 +324,85 @@ function renderLineArt() {
   }
 
   ctx.putImageData(out,0,0);
+  if (outlineMode.checked) applyExpandedOutline();
+}
+
+function applyExpandedOutline() {
+  const w = canvas.width, h = canvas.height;
+  if (!w || !h) return;
+
+  const src = ctx.getImageData(0,0,w,h);
+  const mask = new Uint8Array(w*h);
+
+  for (let i=0, p=0; i<src.data.length; i+=4, p++) {
+    const gray = (src.data[i] + src.data[i+1] + src.data[i+2]) / 3;
+    mask[p] = gray < 128 ? 1 : 0;
+  }
+
+  const expand = Math.max(1, +outlineExpand.value);
+  const width = Math.max(1, +outlineWidth.value);
+
+  const expanded = binaryDilate(mask,w,h,expand);
+  const inner = binaryErode(expanded,w,h,width);
+
+  const out = ctx.getImageData(0,0,w,h);
+  for (let i=0; i<mask.length; i++) {
+    if (!(expanded[i] && !inner[i])) continue;
+    const p = i*4;
+    out.data[p]=0;
+    out.data[p+1]=0;
+    out.data[p+2]=0;
+    out.data[p+3]=255;
+  }
+  ctx.putImageData(out,0,0);
+}
+
+function binaryDilate(src,w,h,radius) {
+  let current = src;
+  for (let pass=0; pass<radius; pass++) {
+    const out = new Uint8Array(current.length);
+    for (let y=0; y<h; y++) {
+      for (let x=0; x<w; x++) {
+        let hit=0;
+        for (let yy=-1; yy<=1 && !hit; yy++) {
+          const ny=y+yy;
+          if (ny<0 || ny>=h) continue;
+          for (let xx=-1; xx<=1; xx++) {
+            const nx=x+xx;
+            if (nx<0 || nx>=w) continue;
+            if (current[ny*w+nx]) { hit=1; break; }
+          }
+        }
+        out[y*w+x]=hit;
+      }
+    }
+    current=out;
+  }
+  return current;
+}
+
+function binaryErode(src,w,h,radius) {
+  let current=src;
+  for (let pass=0; pass<radius; pass++) {
+    const out=new Uint8Array(current.length);
+    for (let y=0; y<h; y++) {
+      for (let x=0; x<w; x++) {
+        let keep=1;
+        for (let yy=-1; yy<=1 && keep; yy++) {
+          const ny=y+yy;
+          for (let xx=-1; xx<=1; xx++) {
+            const nx=x+xx;
+            if (nx<0 || nx>=w || ny<0 || ny>=h || !current[ny*w+nx]) {
+              keep=0; break;
+            }
+          }
+        }
+        out[y*w+x]=keep;
+      }
+    }
+    current=out;
+  }
+  return current;
 }
 
 function rgbaToGray(data,w,h) {

@@ -1,19 +1,17 @@
-# LASERTOOL v5.3
+# LASERTOOL v5.4
 
-本版修正 GitHub Pages 上「模式按鈕按下沒有反應」問題。
+本版將原本的「雷雕模式」改為「增加外框」。
 
-## 修正方式
-- 模式按鈕改成直接呼叫 `LASERTOOL_ENTER()`
-- 模式切換核心程式直接放在 `index.html`
-- `style.css` 與 `app.js` 加上 `?v=5.3`，強制瀏覽器抓新版本，避免舊快取
-- 保留 `[hidden] { display:none !important; }`
-- 保留「← 重選模式」
-- 保留單一預覽區，不會在底部重複顯示圖片
+## 增加外框
+啟用後會保留原本處理結果，並另外複製一份外輪廓：
+- 外框外擴距離：1–40 px
+- 外框粗細：1–8 px
 
-## GitHub
-請三個檔案全部覆蓋：
+新外框會依滑桿指定的像素距離向外移動。
+網點模式與黑線稿模式都可使用。
+
+## GitHub 更新
+請覆蓋：
 - index.html
 - style.css
 - app.js
-
-Commit 後重新開啟 GitHub Pages。

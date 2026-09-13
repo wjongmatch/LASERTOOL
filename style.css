@@ -260,3 +260,13 @@ button:disabled{opacity:.42;cursor:not-allowed}
   .buttons{grid-template-columns:1fr}
   .preview-header{flex-direction:column;gap:4px}
 }
+
+.outline-controls{
+  margin-top:10px;
+  padding:14px;
+  border:1px solid var(--border);
+  border-radius:12px;
+  background:#1d1d21;
+}
+.outline-controls .control-head{margin-bottom:8px}
+.outline-width-head{margin-top:15px}

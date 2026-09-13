@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#111111" />
-  <title>LASERTOOL v5.3</title>
-  <link rel="stylesheet" href="style.css?v=5.3" />
+  <title>LASERTOOL v5.4</title>
+  <link rel="stylesheet" href="style.css?v=5.4" />
 </head>
 <body>
 
@@ -37,7 +37,7 @@
       <div class="title-wrap">
         <div class="title-row">
           <div>
-            <h1>雷雕圖片轉換器 v5.3</h1>
+            <h1>雷雕圖片轉換器 v5.4</h1>
             <p id="modeDesc">目前模式：網點模式</p>
           </div>
           <button id="backModeBtn" class="back-mode-btn" type="button">← 重選模式</button>
@@ -150,9 +150,24 @@
           <input id="invert" type="checkbox">
         </label>
         <label class="toggle-row">
-          <span>雷雕模式</span>
-          <input id="laserMode" type="checkbox">
-        </label>      </div>
+          <span>增加外框</span>
+          <input id="outlineMode" type="checkbox">
+        </label>
+
+        <div id="outlineControls" class="outline-controls" hidden>
+          <div class="control-head">
+            <label for="outlineExpand">外框外擴距離</label>
+            <output id="outlineExpandValue">6 px</output>
+          </div>
+          <input id="outlineExpand" type="range" min="1" max="40" value="6" />
+          <div class="hint">複製目前黑色圖形的外輪廓，再向外擴張指定像素。</div>
+
+          <div class="control-head outline-width-head">
+            <label for="outlineWidth">外框粗細</label>
+            <output id="outlineWidthValue">2 px</output>
+          </div>
+          <input id="outlineWidth" type="range" min="1" max="8" value="2" />
+        </div>      </div>
 
       <div class="buttons export-buttons">
         <button id="jpgBtn" class="primary" disabled>輸出 JPG</button>
@@ -214,6 +229,6 @@
     };
   </script>
 
-  <script src="app.js?v=5.3"></script>
+  <script src="app.js?v=5.4"></script>
 </body>
 </html>
