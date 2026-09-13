@@ -358,74 +358,105 @@ function applyExpandedOutline() {
   if (!w || !h) return;
 
   const src = ctx.getImageData(0,0,w,h);
-  const mask = new Uint8Array(w*h);
-
+  const mask = new Float32Array(w*h);
   for (let i=0, p=0; i<src.data.length; i+=4, p++) {
     const gray = (src.data[i] + src.data[i+1] + src.data[i+2]) / 3;
     mask[p] = gray < 128 ? 1 : 0;
   }
 
   const expand = Math.max(1, +outlineExpand.value);
-  const smoothness = Math.round(Math.max(0, +outlineSmooth.value) * 8 / 100);
+  const smooth = Math.max(0, Math.min(100, +outlineSmooth.value));
 
-  let expanded = binaryDilate(mask,w,h,expand);
+  // v5.8：先用可調半徑的低通濾波把像素階梯轉成平順輪廓，
+  // 再以圓形距離場產生外擴線，避免舊版方形膨脹造成的尖角與鋸齒。
+  const radius = Math.round((smooth / 100) * 14);
+  const passes = smooth === 0 ? 0 : 2 + Math.round((smooth / 100) * 2);
+  let curved = mask;
+  if (radius > 0) curved = smoothFloatMask(mask,w,h,radius,passes);
 
-  // 圓滑處理：重複進行閉運算與鄰域平滑，降低鋸齒與尖角。
-  if (smoothness > 0) {
-    expanded = smoothBinaryMask(expanded,w,h,smoothness);
-  }
+  const solid = new Uint8Array(w*h);
+  for (let i=0; i<solid.length; i++) solid[i] = curved[i] >= 0.5 ? 1 : 0;
 
-  // 外框固定為約 2px，避免圓滑程度影響線寬。
-  const inner = binaryErode(expanded,w,h,2);
+  const dist = distanceFromSolid(solid,w,h);
+  const lineWidth = 2;
+  const outer = expand + lineWidth / 2;
+  const inner = Math.max(0, expand - lineWidth / 2);
 
   const out = ctx.getImageData(0,0,w,h);
-  for (let i=0; i<mask.length; i++) {
-    if (!(expanded[i] && !inner[i])) continue;
-    const p = i*4;
-    out.data[p]=0;
-    out.data[p+1]=0;
-    out.data[p+2]=0;
-    out.data[p+3]=255;
+  for (let i=0; i<solid.length; i++) {
+    if (solid[i]) continue;
+    const d = dist[i];
+    if (d >= inner && d <= outer) {
+      const p=i*4;
+      out.data[p]=0; out.data[p+1]=0; out.data[p+2]=0; out.data[p+3]=255;
+    }
   }
   ctx.putImageData(out,0,0);
 }
 
-function smoothBinaryMask(src,w,h,passes) {
-  let current = src;
-
+function smoothFloatMask(src,w,h,radius,passes) {
+  let cur = new Float32Array(src);
   for (let p=0; p<passes; p++) {
-    // closing：先膨脹再侵蝕，填平小凹洞
-    current = binaryErode(binaryDilate(current,w,h,1),w,h,1);
-
-    // 多數決濾波：削掉鋸齒與孤立尖點
-    const out = new Uint8Array(current.length);
-
-    for (let y=0; y<h; y++) {
-      for (let x=0; x<w; x++) {
-        let count = 0;
-        let total = 0;
-
-        for (let yy=-1; yy<=1; yy++) {
-          const ny = y + yy;
-          if (ny < 0 || ny >= h) continue;
-
-          for (let xx=-1; xx<=1; xx++) {
-            const nx = x + xx;
-            if (nx < 0 || nx >= w) continue;
-
-            total++;
-            count += current[ny*w + nx];
-          }
-        }
-
-        out[y*w + x] = count >= Math.ceil(total * 0.5) ? 1 : 0;
-      }
-    }
-
-    current = out;
+    cur = boxBlurHorizontal(cur,w,h,radius);
+    cur = boxBlurVertical(cur,w,h,radius);
   }
+  return cur;
+}
 
-  return current;
+function boxBlurHorizontal(src,w,h,r) {
+  const out = new Float32Array(src.length);
+  for (let y=0; y<h; y++) {
+    let sum=0, count=0;
+    for (let x=-r; x<=r; x++) if (x>=0 && x<w) { sum+=src[y*w+x]; count++; }
+    for (let x=0; x<w; x++) {
+      out[y*w+x]=sum/count;
+      const remove=x-r, add=x+r+1;
+      if (remove>=0) { sum-=src[y*w+remove]; count--; }
+      if (add<w) { sum+=src[y*w+add]; count++; }
+    }
+  }
+  return out;
+}
+
+function boxBlurVertical(src,w,h,r) {
+  const out = new Float32Array(src.length);
+  for (let x=0; x<w; x++) {
+    let sum=0, count=0;
+    for (let y=-r; y<=r; y++) if (y>=0 && y<h) { sum+=src[y*w+x]; count++; }
+    for (let y=0; y<h; y++) {
+      out[y*w+x]=sum/count;
+      const remove=y-r, add=y+r+1;
+      if (remove>=0) { sum-=src[remove*w+x]; count--; }
+      if (add<h) { sum+=src[add*w+x]; count++; }
+    }
+  }
+  return out;
+}
+
+function distanceFromSolid(mask,w,h) {
+  const INF=1e9, SQRT2=Math.SQRT2;
+  const d=new Float32Array(mask.length);
+  for (let i=0;i<d.length;i++) d[i]=mask[i]?0:INF;
+
+  for (let y=0;y<h;y++) for (let x=0;x<w;x++) {
+    const i=y*w+x;
+    let v=d[i];
+    if (x>0) v=Math.min(v,d[i-1]+1);
+    if (y>0) v=Math.min(v,d[i-w]+1);
+    if (x>0&&y>0) v=Math.min(v,d[i-w-1]+SQRT2);
+    if (x+1<w&&y>0) v=Math.min(v,d[i-w+1]+SQRT2);
+    d[i]=v;
+  }
+  for (let y=h-1;y>=0;y--) for (let x=w-1;x>=0;x--) {
+    const i=y*w+x;
+    let v=d[i];
+    if (x+1<w) v=Math.min(v,d[i+1]+1);
+    if (y+1<h) v=Math.min(v,d[i+w]+1);
+    if (x+1<w&&y+1<h) v=Math.min(v,d[i+w+1]+SQRT2);
+    if (x>0&&y+1<h) v=Math.min(v,d[i+w-1]+SQRT2);
+    d[i]=v;
+  }
+  return d;
 }
 
 function binaryDilate(src,w,h,radius) {
