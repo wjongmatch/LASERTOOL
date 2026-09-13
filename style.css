@@ -1,3 +1,8 @@
+/* 重要：確保 HTML hidden 屬性不會被自訂 display 規則覆蓋 */
+[hidden] {
+  display: none !important;
+}
+
 * { box-sizing: border-box; }
 :root {
   color-scheme: dark;
@@ -212,12 +217,6 @@ button:disabled{opacity:.42;cursor:not-allowed}
 }
 .preview-header h2{margin:0;font-size:18px}
 #imageInfo{color:var(--muted);font-size:13px}
-.compare-wrap{
-  display:grid;
-  grid-template-columns:1fr;
-  gap:14px;
-}
-.compare-wrap.compare-on{grid-template-columns:1fr 1fr}
 .preview-box{min-width:0}
 .preview-label{
   margin:0 0 7px 4px;
@@ -225,31 +224,7 @@ button:disabled{opacity:.42;cursor:not-allowed}
   font-size:13px;
   font-weight:700;
 }
-.canvas-wrap,.original-box{
-  min-height:620px;
-  display:grid;
-  place-items:center;
-  overflow:auto;
-  border-radius:16px;
-  background-color:#d8d8d8;
-  background-image:
-    linear-gradient(45deg,#c9c9c9 25%,transparent 25%),
-    linear-gradient(-45deg,#c9c9c9 25%,transparent 25%),
-    linear-gradient(45deg,transparent 75%,#c9c9c9 75%),
-    linear-gradient(-45deg,transparent 75%,#c9c9c9 75%);
-  background-size:24px 24px;
-  background-position:0 0,0 12px,12px -12px,-12px 0;
-}
-.original-box{align-content:start}
-.original-box .preview-label{
-  position:sticky;
-  top:0;
-  background:#161618;
-  width:100%;
-  padding:0 0 7px 4px;
-  z-index:1;
-}
-canvas{
+.canvas-wrap,canvas{
   max-width:100%;
   height:auto;
   display:block;
@@ -273,9 +248,7 @@ canvas{
     margin:10px auto 28px;
   }
   .controls{position:static;padding:18px}
-  .compare-wrap.compare-on{grid-template-columns:1fr}
-  .canvas-wrap,.original-box{min-height:420px}
-}
+    .canvas-wrap,}
 @media(max-width:650px){
   .mode-choice-grid{grid-template-columns:1fr}
   .mode-gate-card{padding:22px}

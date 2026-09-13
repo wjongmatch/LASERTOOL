@@ -14,12 +14,8 @@ const sourceCanvas = $("sourceCanvas");
 const sourceCtx = sourceCanvas.getContext("2d", { willReadFrequently: true });
 const alphaCanvas = $("alphaCanvas");
 const alphaCtx = alphaCanvas.getContext("2d");
-const originalCanvas = $("originalCanvas");
-const originalCtx = originalCanvas.getContext("2d");
 
 const emptyState = $("emptyState");
-const originalBox = $("originalBox");
-const compareWrap = $("compareWrap");
 const imageInfo = $("imageInfo");
 const resultLabel = $("resultLabel");
 
@@ -51,7 +47,6 @@ const majorOutline = $("majorOutline");
 
 const invert = $("invert");
 const laserMode = $("laserMode");
-const compareMode = $("compareMode");
 const halftoneControls = $("halftoneControls");
 const lineartControls = $("lineartControls");
 
@@ -116,10 +111,6 @@ dropZone.addEventListener("drop", e => handleFile(e.dataTransfer.files?.[0]));
 
 [invert, laserMode, majorOutline].forEach(el => el.addEventListener("change", render));
 
-compareMode.addEventListener("change", () => {
-  originalBox.hidden = !compareMode.checked;
-  compareWrap.classList.toggle("compare-on", compareMode.checked);
-});
 
 shapeButtons.forEach(btn => btn.addEventListener("click", () => {
   currentShape = btn.dataset.shape;
@@ -149,15 +140,13 @@ function handleFile(file) {
     const w = Math.max(1, Math.round(image.naturalWidth * scale));
     const h = Math.max(1, Math.round(image.naturalHeight * scale));
 
-    [sourceCanvas, originalCanvas, canvas, alphaCanvas].forEach(c => {
+    [sourceCanvas, canvas, alphaCanvas].forEach(c => {
       c.width = w;
       c.height = h;
     });
 
     sourceCtx.clearRect(0,0,w,h);
     sourceCtx.drawImage(image,0,0,w,h);
-    originalCtx.clearRect(0,0,w,h);
-    originalCtx.drawImage(image,0,0,w,h);
 
     emptyState.hidden = true;
     canvas.hidden = false;
@@ -204,14 +193,11 @@ function resetControls() {
 
   invert.checked = false;
   laserMode.checked = false;
-  compareMode.checked = false;
   majorOutline.checked = false;
 
   currentShape = "dots";
   shapeButtons.forEach(b => b.classList.toggle("active", b.dataset.shape === "dots"));
 
-  originalBox.hidden = true;
-  compareWrap.classList.remove("compare-on");
 
   render();
 }

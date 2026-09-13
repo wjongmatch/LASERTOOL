@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#111111" />
-  <title>LASERTOOL v5</title>
+  <title>LASERTOOL v5.2</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -37,7 +37,7 @@
       <div class="title-wrap">
         <div class="title-row">
           <div>
-            <h1>雷雕圖片轉換器 v5</h1>
+            <h1>雷雕圖片轉換器 v5.2</h1>
             <p id="modeDesc">目前模式：網點模式</p>
           </div>
           <button id="backModeBtn" class="back-mode-btn" type="button">← 重選模式</button>
@@ -152,12 +152,7 @@
         <label class="toggle-row">
           <span>雷雕模式</span>
           <input id="laserMode" type="checkbox">
-        </label>
-        <label class="toggle-row">
-          <span>原圖對照</span>
-          <input id="compareMode" type="checkbox">
-        </label>
-      </div>
+        </label>      </div>
 
       <div class="buttons export-buttons">
         <button id="jpgBtn" class="primary" disabled>輸出 JPG</button>
@@ -177,22 +172,15 @@
         <span id="imageInfo">尚未載入圖片</span>
       </div>
 
-      <div class="compare-wrap" id="compareWrap">
-        <div class="preview-box original-box" id="originalBox" hidden>
-          <div class="preview-label">原圖</div>
-          <canvas id="originalCanvas"></canvas>
-        </div>
-
-        <div class="preview-box result-box">
-          <div class="preview-label" id="resultLabel">處理結果</div>
-          <div class="canvas-wrap">
-            <div class="empty-state" id="emptyState">
-              <div class="empty-icon">▧</div>
-              <strong>請先上傳圖片</strong>
-              <span>處理結果會顯示在這裡</span>
-            </div>
-            <canvas id="canvas" hidden></canvas>
+      <div class="preview-box result-box">
+        <div class="preview-label" id="resultLabel">處理結果</div>
+        <div class="canvas-wrap">
+          <div class="empty-state" id="emptyState">
+            <div class="empty-icon">▧</div>
+            <strong>請先上傳圖片</strong>
+            <span>處理結果會顯示在這裡</span>
           </div>
+          <canvas id="canvas" hidden></canvas>
         </div>
       </div>
     </section>
