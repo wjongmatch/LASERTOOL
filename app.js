@@ -247,8 +247,8 @@ function resetControls() {
   outlineControls.hidden = true;
   outlineExpand.value = 6;
   outlineExpandValue.value = "6 px";
-  outlineSmooth.value = 2;
-  outlineSmoothValue.value = "2";
+  outlineSmooth.value = 20;
+  outlineSmoothValue.value = "20";
   majorOutline.checked = false;
 
   currentShape = "dots";
@@ -366,7 +366,7 @@ function applyExpandedOutline() {
   }
 
   const expand = Math.max(1, +outlineExpand.value);
-  const smoothness = Math.max(0, +outlineSmooth.value);
+  const smoothness = Math.round(Math.max(0, +outlineSmooth.value) * 8 / 100);
 
   let expanded = binaryDilate(mask,w,h,expand);
 
