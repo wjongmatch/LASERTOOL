@@ -53,12 +53,21 @@ const lineartControls = $("lineartControls");
 const shapeButtons = [...document.querySelectorAll(".shape-btn")];
 
 let img = null;
-let currentMode = null;
+let currentMode = window.LASERTOOL_SELECTED_MODE || null;
 let currentShape = "dots";
 let renderTimer = null;
 
-enterModeButtons.forEach(btn => {
-  btn.addEventListener("click", () => enterMode(btn.dataset.enterMode));
+// 模式按鈕由 index.html 的 LASERTOOL_ENTER() 直接處理。
+window.addEventListener("lasertool-mode-change", (event) => {
+  const mode = event.detail?.mode;
+  if (!mode) return;
+  currentMode = mode;
+  const isHalftone = mode === "halftone";
+  halftoneControls.hidden = !isHalftone;
+  lineartControls.hidden = isHalftone;
+  resultLabel.textContent = isHalftone ? "網點結果" : "黑線稿結果";
+  modeDesc.textContent = isHalftone ? "目前模式：網點模式" : "目前模式：黑線稿模式";
+  render();
 });
 
 backModeBtn.addEventListener("click", () => {

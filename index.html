@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#111111" />
-  <title>LASERTOOL v5.2</title>
-  <link rel="stylesheet" href="style.css" />
+  <title>LASERTOOL v5.3</title>
+  <link rel="stylesheet" href="style.css?v=5.3" />
 </head>
 <body>
 
@@ -17,13 +17,13 @@
       <p>選擇後會進入對應工具介面，也可以隨時返回重新選擇。</p>
 
       <div class="mode-choice-grid">
-        <button class="mode-choice" data-enter-mode="halftone">
+        <button class="mode-choice" data-enter-mode="halftone" type="button" onclick="LASERTOOL_ENTER('halftone')">
           <span class="mode-choice-icon">◉</span>
           <strong>網點模式</strong>
           <small>適合照片、陰影、雷雕灰階效果</small>
         </button>
 
-        <button class="mode-choice" data-enter-mode="lineart">
+        <button class="mode-choice" data-enter-mode="lineart" type="button" onclick="LASERTOOL_ENTER('lineart')">
           <span class="mode-choice-icon">✎</span>
           <strong>黑線稿模式</strong>
           <small>自動描邊、去除雜點、輸出輪廓</small>
@@ -37,7 +37,7 @@
       <div class="title-wrap">
         <div class="title-row">
           <div>
-            <h1>雷雕圖片轉換器 v5.2</h1>
+            <h1>雷雕圖片轉換器 v5.3</h1>
             <p id="modeDesc">目前模式：網點模式</p>
           </div>
           <button id="backModeBtn" class="back-mode-btn" type="button">← 重選模式</button>
@@ -189,6 +189,31 @@
   <canvas id="sourceCanvas" hidden></canvas>
   <canvas id="alphaCanvas" hidden></canvas>
 
-  <script src="app.js"></script>
+
+  <script>
+    // v5.3：模式切換使用獨立函式，避免舊版 app.js 快取造成按鈕無反應。
+    window.LASERTOOL_ENTER = function(mode) {
+      var gate = document.getElementById("modeGate");
+      var app = document.getElementById("mainApp");
+      var halftone = document.getElementById("halftoneControls");
+      var lineart = document.getElementById("lineartControls");
+      var desc = document.getElementById("modeDesc");
+      var label = document.getElementById("resultLabel");
+
+      if (gate) gate.hidden = true;
+      if (app) app.hidden = false;
+
+      var isHalftone = mode === "halftone";
+      if (halftone) halftone.hidden = !isHalftone;
+      if (lineart) lineart.hidden = isHalftone;
+      if (desc) desc.textContent = isHalftone ? "目前模式：網點模式" : "目前模式：黑線稿模式";
+      if (label) label.textContent = isHalftone ? "網點結果" : "黑線稿結果";
+
+      window.LASERTOOL_SELECTED_MODE = mode;
+      window.dispatchEvent(new CustomEvent("lasertool-mode-change", { detail: { mode: mode } }));
+    };
+  </script>
+
+  <script src="app.js?v=5.3"></script>
 </body>
 </html>
