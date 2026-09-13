@@ -104,8 +104,12 @@ toggleOriginalBtn.addEventListener("click", () => {
     : (currentMode === "halftone" ? "網點結果" : "黑線稿結果");
 
   if (showingOriginal) {
+    const pad = getOutputPadding();
+    setOutputCanvasSize();
     ctx.clearRect(0,0,canvas.width,canvas.height);
-    ctx.drawImage(sourceCanvas,0,0);
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.drawImage(sourceCanvas,pad,pad);
   } else {
     render();
   }
@@ -148,7 +152,7 @@ outlineMode.addEventListener("change", () => {
 });
 
 outlineExpand.addEventListener("input", () => {
-  outlineExpandValue.value = `${outlineExpand.value} px`;
+  outlineExpandValue.value = `${outlineExpand.value}%`;
   queueRender();
 });
 
@@ -193,7 +197,6 @@ function handleFile(file) {
     emptyState.hidden = true;
     canvas.hidden = false;
     [jpgBtn,pngBtn,dxfBtn,resetBtn,toggleOriginalBtn].forEach(b => b.disabled = false);
-  updateOutlineExpandLimit();
 
     imageInfo.textContent =
       `${image.naturalWidth} × ${image.naturalHeight}px` +
@@ -240,8 +243,8 @@ function resetControls() {
   invert.checked = false;
   outlineMode.checked = false;
   outlineControls.hidden = true;
-  outlineExpand.value = 6;
-  outlineExpandValue.value = "6 px";
+  outlineExpand.value = 5;
+  outlineExpandValue.value = "5%";
   majorOutline.checked = false;
 
   currentShape = "dots";
@@ -256,48 +259,36 @@ function queueRender() {
   renderTimer = setTimeout(render, 30);
 }
 
-function getMaxSafeOutlineExpand() {
-  if (!canvas.width || !canvas.height) return 40;
+function getOutlineExpandPixels() {
+  if (!sourceCanvas.width || !sourceCanvas.height) return 0;
 
-  // 依目前主體與畫布邊界距離，估算安全最大外擴量。
-  const w = canvas.width, h = canvas.height;
-  const subject = buildSubjectMaskFromSource(w,h);
-
-  let minX=w, minY=h, maxX=-1, maxY=-1;
-  for (let i=0; i<subject.length; i++) {
-    if (!subject[i]) continue;
-    const x=i%w, y=(i/w)|0;
-    if (x<minX) minX=x;
-    if (x>maxX) maxX=x;
-    if (y<minY) minY=y;
-    if (y>maxY) maxY=y;
-  }
-
-  if (maxX < 0) return 40;
-
-  const margin = Math.max(
-    1,
-    Math.floor(Math.min(minX, minY, w-1-maxX, h-1-maxY) - 2)
-  );
-
-  return Math.min(40, margin);
+  // 使用整張圖片「短邊」作為百分比基準。
+  // 例如 1000×600 圖片設定 10%，外擴距離 = 60px。
+  const percent = Math.max(0, +outlineExpand.value) / 100;
+  const base = Math.min(sourceCanvas.width, sourceCanvas.height);
+  return Math.max(1, Math.round(base * percent));
 }
 
-function updateOutlineExpandLimit() {
-  if (!img) return;
+function getOutputPadding() {
+  // 開啟外框時，依百分比換算實際像素後，自動在四周增加空間。
+  // 額外保留 6px，避免外框貼邊或匯出時被裁切。
+  return outlineMode.checked ? getOutlineExpandPixels() + 6 : 0;
+}
 
-  const maxSafe = getMaxSafeOutlineExpand();
-  outlineExpand.max = Math.max(1, maxSafe);
-
-  if (+outlineExpand.value > +outlineExpand.max) {
-    outlineExpand.value = outlineExpand.max;
-    outlineExpandValue.value = `${outlineExpand.value} px`;
+function setOutputCanvasSize() {
+  if (!sourceCanvas.width || !sourceCanvas.height) return 0;
+  const pad = getOutputPadding();
+  const targetW = sourceCanvas.width + pad * 2;
+  const targetH = sourceCanvas.height + pad * 2;
+  if (canvas.width !== targetW || canvas.height !== targetH) {
+    canvas.width = targetW;
+    canvas.height = targetH;
   }
+  return pad;
 }
 
 function render() {
   if (!img || !currentMode) return;
-  updateOutlineExpandLimit();
   showingOriginal = false;
   toggleOriginalBtn.classList.remove("active");
   toggleOriginalBtn.textContent = "查看原圖";
@@ -308,12 +299,14 @@ function render() {
 
 function renderHalftone() {
   const w = sourceCanvas.width, h = sourceCanvas.height;
+  const pad = getOutputPadding();
   const data = sourceCtx.getImageData(0,0,w,h).data;
 
   ctx.save();
-  ctx.clearRect(0,0,w,h);
+  ctx.clearRect(0,0,canvas.width,canvas.height);
   ctx.fillStyle = "#fff";
-  ctx.fillRect(0,0,w,h);
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.translate(pad,pad);
   ctx.fillStyle = "#000";
   ctx.strokeStyle = "#000";
 
@@ -371,6 +364,11 @@ function renderLineArt() {
     binary = dilate(binary,w,h,thickness - 1);
   }
 
+  const pad = getOutputPadding();
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
   const out = ctx.createImageData(w,h);
   for (let i = 0; i < binary.length; i++) {
     const isBlack = invert.checked ? !binary[i] : !!binary[i];
@@ -382,7 +380,7 @@ function renderLineArt() {
     out.data[p+3] = 255;
   }
 
-  ctx.putImageData(out,0,0);
+  ctx.putImageData(out,pad,pad);
   if (outlineMode.checked) applyExpandedOutline();
 }
 
@@ -397,7 +395,8 @@ function applyExpandedOutline() {
    * 因此調整臨界值、網點大小、對比、密度等參數時，
    * 中間的黑白細節不會再產生新的外框。
    */
-  const subject = buildSubjectMaskFromSource(w,h);
+  const pad = getOutputPadding();
+  const subject = buildSubjectMaskFromSource(w,h,pad);
 
   // 先移除非常小的雜點，但保留文字的筆畫。
   let grouped = removeTinyComponents(subject,w,h);
@@ -419,7 +418,7 @@ function applyExpandedOutline() {
   // 內部圖案、文字孔洞、眼睛、網點等不會另外描框。
   const outerSolid = fillInternalHoles(grouped,w,h);
 
-  const expand = Math.max(1, +outlineExpand.value);
+  const expand = getOutlineExpandPixels();
   const dist = distanceFromSolid(outerSolid,w,h);
 
   // 單一外框固定約 2 px。
@@ -458,46 +457,36 @@ function applyExpandedOutline() {
   ctx.putImageData(out,0,0);
 }
 
-function buildSubjectMaskFromSource(w,h) {
-  const src = sourceCtx.getImageData(0,0,w,h).data;
-  const mask = new Uint8Array(w*h);
-
-  // 用四角估算背景色；對一般白底、淺色底圖片都比固定抓白色穩定。
-  const samples = [
-    [0,0], [w-1,0], [0,h-1], [w-1,h-1]
-  ];
+function buildSubjectMaskFromSource(outW,outH,pad=0) {
+  const sw = sourceCanvas.width, sh = sourceCanvas.height;
+  const src = sourceCtx.getImageData(0,0,sw,sh).data;
+  const mask = new Uint8Array(outW*outH);
+  const samples = [[0,0],[sw-1,0],[0,sh-1],[sw-1,sh-1]];
   let br=0,bg=0,bb=0,ba=0;
   for (const [x,y] of samples) {
-    const p=(y*w+x)*4;
+    const p=(y*sw+x)*4;
     br+=src[p]; bg+=src[p+1]; bb+=src[p+2]; ba+=src[p+3];
   }
   br/=4; bg/=4; bb/=4; ba/=4;
-
   const transparentBackground = ba < 80;
-
-  for (let y=0; y<h; y++) {
-    for (let x=0; x<w; x++) {
-      const i=y*w+x, p=i*4;
-      const a=src[p+3];
-
+  for (let y=0; y<sh; y++) {
+    for (let x=0; x<sw; x++) {
+      const si=y*sw+x, sp=si*4;
+      const a=src[sp+3];
+      let isSubject=0;
       if (transparentBackground) {
-        mask[i] = a > 24 ? 1 : 0;
-        continue;
+        isSubject = a > 24 ? 1 : 0;
+      } else if (a >= 24) {
+        const dr=src[sp]-br, dg=src[sp+1]-bg, db=src[sp+2]-bb;
+        const colorDistance=Math.sqrt(dr*dr+dg*dg+db*db);
+        isSubject = colorDistance > 22 ? 1 : 0;
       }
-
-      if (a < 24) {
-        mask[i]=0;
-        continue;
+      if (isSubject) {
+        const ox=x+pad, oy=y+pad;
+        if (ox>=0 && ox<outW && oy>=0 && oy<outH) mask[oy*outW+ox]=1;
       }
-
-      const dr=src[p]-br, dg=src[p+1]-bg, db=src[p+2]-bb;
-      const colorDistance=Math.sqrt(dr*dr+dg*dg+db*db);
-
-      // 與背景有明顯差異就視為主體。
-      mask[i] = colorDistance > 22 ? 1 : 0;
     }
   }
-
   return mask;
 }
 
