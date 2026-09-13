@@ -345,15 +345,12 @@ function renderLineArt() {
   if (outlineMode.checked) applyExpandedOutline();
 }
 
-
 function applyExpandedOutline() {
   const w = canvas.width, h = canvas.height;
   if (!w || !h) return;
 
   const src = ctx.getImageData(0,0,w,h);
-  const mask = new Uint8Array(w*h);
-
-  // 以目前輸出中的黑色區域作為輪廓來源。
+  const mask = new Float32Array(w*h);
   for (let i=0, p=0; i<src.data.length; i+=4, p++) {
     const gray = (src.data[i] + src.data[i+1] + src.data[i+2]) / 3;
     mask[p] = gray < 128 ? 1 : 0;
@@ -361,61 +358,128 @@ function applyExpandedOutline() {
 
   const expand = Math.max(1, +outlineExpand.value);
 
-  // 自動圓滑：固定做適度閉運算與多數決平滑，
-  // 使用者不需要再調整圓滑程度。
-  let smoothMask = mask;
-  smoothMask = binaryErode(binaryDilate(smoothMask,w,h,1),w,h,1);
-  smoothMask = majoritySmooth(smoothMask,w,h,2);
+  // 外框輪廓固定採用 v5.9「圓滑程度 0」：
+  // 不做曲線化或額外平滑，忠實保留原始最外圍形狀。
+  const solid = new Uint8Array(w*h);
+  for (let i=0; i<solid.length; i++) solid[i] = mask[i] >= 0.5 ? 1 : 0;
 
-  // 回到最初版概念：複製目前圖形，往外擴張指定像素。
-  const expanded = binaryDilate(smoothMask,w,h,expand);
+  // 只保留整個圖案最外層的一圈。
+  // 先把最外框包住的所有白色區域視為內部，完全忽略眼睛、文字、
+  // 網點間隙、孔洞與其他內部線條，避免它們產生任何新增外框。
+  const outerSolid = fillInternalHoles(solid,w,h);
 
-  // 固定約 2px 的外框，只畫新增的外圈。
-  const inner = binaryErode(expanded,w,h,2);
+  const dist = distanceFromSolid(outerSolid,w,h);
+  const lineWidth = 2;
+  const outer = expand + lineWidth / 2;
+  const inner = Math.max(0, expand - lineWidth / 2);
 
   const out = ctx.getImageData(0,0,w,h);
-  for (let i=0; i<mask.length; i++) {
-    if (!(expanded[i] && !inner[i])) continue;
-    const p = i*4;
-    out.data[p] = 0;
-    out.data[p+1] = 0;
-    out.data[p+2] = 0;
-    out.data[p+3] = 255;
+  for (let i=0; i<outerSolid.length; i++) {
+    if (outerSolid[i]) continue;
+    const d = dist[i];
+    if (d >= inner && d <= outer) {
+      const p=i*4;
+      out.data[p]=0; out.data[p+1]=0; out.data[p+2]=0; out.data[p+3]=255;
+    }
   }
   ctx.putImageData(out,0,0);
 }
 
-function majoritySmooth(src,w,h,passes=2) {
-  let current = src;
 
-  for (let pass=0; pass<passes; pass++) {
-    const out = new Uint8Array(current.length);
+function fillInternalHoles(mask,w,h) {
+  // 從畫布四邊的白色區域做 flood fill。
+  // 能連到畫布邊緣的白色屬於「外部」；其餘白色都視為主體內部孔洞並填滿。
+  const outside = new Uint8Array(mask.length);
+  const qx = new Int32Array(mask.length);
+  const qy = new Int32Array(mask.length);
+  let head = 0, tail = 0;
 
-    for (let y=0; y<h; y++) {
-      for (let x=0; x<w; x++) {
-        let count = 0;
-        let total = 0;
+  const push = (x,y) => {
+    if (x<0 || x>=w || y<0 || y>=h) return;
+    const i=y*w+x;
+    if (mask[i] || outside[i]) return;
+    outside[i]=1;
+    qx[tail]=x; qy[tail]=y; tail++;
+  };
 
-        for (let yy=-1; yy<=1; yy++) {
-          const ny = y + yy;
-          if (ny < 0 || ny >= h) continue;
+  for (let x=0; x<w; x++) { push(x,0); push(x,h-1); }
+  for (let y=0; y<h; y++) { push(0,y); push(w-1,y); }
 
-          for (let xx=-1; xx<=1; xx++) {
-            const nx = x + xx;
-            if (nx < 0 || nx >= w) continue;
-            total++;
-            count += current[ny*w + nx];
-          }
-        }
-
-        out[y*w + x] = count >= Math.ceil(total * 0.5) ? 1 : 0;
-      }
-    }
-
-    current = out;
+  while (head < tail) {
+    const x=qx[head], y=qy[head]; head++;
+    push(x-1,y); push(x+1,y); push(x,y-1); push(x,y+1);
   }
 
-  return current;
+  const out = new Uint8Array(mask.length);
+  for (let i=0; i<mask.length; i++) {
+    out[i] = mask[i] || !outside[i] ? 1 : 0;
+  }
+  return out;
+}
+
+function smoothFloatMask(src,w,h,radius,passes) {
+  let cur = new Float32Array(src);
+  for (let p=0; p<passes; p++) {
+    cur = boxBlurHorizontal(cur,w,h,radius);
+    cur = boxBlurVertical(cur,w,h,radius);
+  }
+  return cur;
+}
+
+function boxBlurHorizontal(src,w,h,r) {
+  const out = new Float32Array(src.length);
+  for (let y=0; y<h; y++) {
+    let sum=0, count=0;
+    for (let x=-r; x<=r; x++) if (x>=0 && x<w) { sum+=src[y*w+x]; count++; }
+    for (let x=0; x<w; x++) {
+      out[y*w+x]=sum/count;
+      const remove=x-r, add=x+r+1;
+      if (remove>=0) { sum-=src[y*w+remove]; count--; }
+      if (add<w) { sum+=src[y*w+add]; count++; }
+    }
+  }
+  return out;
+}
+
+function boxBlurVertical(src,w,h,r) {
+  const out = new Float32Array(src.length);
+  for (let x=0; x<w; x++) {
+    let sum=0, count=0;
+    for (let y=-r; y<=r; y++) if (y>=0 && y<h) { sum+=src[y*w+x]; count++; }
+    for (let y=0; y<h; y++) {
+      out[y*w+x]=sum/count;
+      const remove=y-r, add=y+r+1;
+      if (remove>=0) { sum-=src[remove*w+x]; count--; }
+      if (add<h) { sum+=src[add*w+x]; count++; }
+    }
+  }
+  return out;
+}
+
+function distanceFromSolid(mask,w,h) {
+  const INF=1e9, SQRT2=Math.SQRT2;
+  const d=new Float32Array(mask.length);
+  for (let i=0;i<d.length;i++) d[i]=mask[i]?0:INF;
+
+  for (let y=0;y<h;y++) for (let x=0;x<w;x++) {
+    const i=y*w+x;
+    let v=d[i];
+    if (x>0) v=Math.min(v,d[i-1]+1);
+    if (y>0) v=Math.min(v,d[i-w]+1);
+    if (x>0&&y>0) v=Math.min(v,d[i-w-1]+SQRT2);
+    if (x+1<w&&y>0) v=Math.min(v,d[i-w+1]+SQRT2);
+    d[i]=v;
+  }
+  for (let y=h-1;y>=0;y--) for (let x=w-1;x>=0;x--) {
+    const i=y*w+x;
+    let v=d[i];
+    if (x+1<w) v=Math.min(v,d[i+1]+1);
+    if (y+1<h) v=Math.min(v,d[i+w]+1);
+    if (x+1<w&&y+1<h) v=Math.min(v,d[i+w+1]+SQRT2);
+    if (x>0&&y+1<h) v=Math.min(v,d[i+w-1]+SQRT2);
+    d[i]=v;
+  }
+  return d;
 }
 
 function binaryDilate(src,w,h,radius) {
