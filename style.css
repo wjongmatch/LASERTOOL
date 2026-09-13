@@ -518,3 +518,53 @@ button:disabled{opacity:.42;cursor:not-allowed}
   .app-school-brand-text strong{font-size:16px;}
   .app-school-brand-text span{font-size:12px;}
 }
+
+
+/* v6.14：縮短預覽區高度，避免下方大量空白 */
+.preview-panel{
+  min-height:0 !important;
+  align-self:start;
+}
+
+/* 預覽區固定在適合操作的高度，圖片可在區域內拖曳 / 縮放 */
+.preview-viewport{
+  height:clamp(320px, 56vh, 540px) !important;
+  min-height:0 !important;
+  overflow:hidden;
+}
+
+/* 左側工具列超過螢幕高度時，改成自己捲動，不會卡住下方工具 */
+@media (min-width:1001px){
+  .controls{
+    max-height:calc(100vh - 40px);
+    overflow-y:auto;
+    scrollbar-gutter:stable;
+  }
+  .controls::-webkit-scrollbar{
+    width:8px;
+  }
+  .controls::-webkit-scrollbar-thumb{
+    background:#44444c;
+    border-radius:8px;
+  }
+  .controls::-webkit-scrollbar-track{
+    background:transparent;
+  }
+}
+
+/* 小螢幕稍微再縮短預覽高度 */
+@media (max-width:1000px){
+  .preview-viewport{
+    height:clamp(300px, 50vh, 480px) !important;
+  }
+  .controls{
+    max-height:none;
+    overflow:visible;
+  }
+}
+
+@media (max-width:600px){
+  .preview-viewport{
+    height:360px !important;
+  }
+}
