@@ -270,9 +270,16 @@ function getOutlineExpandPixels() {
 }
 
 function getOutputPadding() {
-  // 開啟外框時，依百分比換算實際像素後，自動在四周增加空間。
-  // 額外保留 6px，避免外框貼邊或匯出時被裁切。
-  return outlineMode.checked ? getOutlineExpandPixels() + 6 : 0;
+  if (!sourceCanvas.width || !sourceCanvas.height) return 0;
+
+  // 圖片匯入時就一次預留最大可外擴範圍。
+  // 外擴比例從 1% 調到 50% 時，畫布尺寸與圖片位置都保持固定。
+  const maxPercent = Math.max(0, +(outlineExpand.max || 50)) / 100;
+  const base = Math.min(sourceCanvas.width, sourceCanvas.height);
+  const maxExpand = Math.round(base * maxPercent);
+
+  // 額外保留 8px，避免最外圈貼邊。
+  return maxExpand + 8;
 }
 
 function setOutputCanvasSize() {
@@ -285,6 +292,11 @@ function setOutputCanvasSize() {
     canvas.height = targetH;
   }
   return pad;
+}
+
+function updateImageInfo() {
+  if (!sourceCanvas.width || !sourceCanvas.height) return;
+  imageInfo.textContent = `${sourceCanvas.width} × ${sourceCanvas.height}px｜預留畫布 ${canvas.width} × ${canvas.height}px`;
 }
 
 function render() {
