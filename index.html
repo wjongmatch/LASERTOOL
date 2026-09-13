@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#111111" />
+  <title>黑白網點／雷雕圖片轉換器</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="app">
+    <section class="panel controls">
+      <div class="title-wrap">
+        <h1>黑白網點／雷雕圖片轉換器</h1>
+        <p>圖片在瀏覽器本機處理，可輸出 JPG、透明 PNG 與 DXF 外框向量。</p>
+      </div>
+
+      <label class="upload-box" id="dropZone" for="fileInput">
+        <span class="upload-title">點一下或拖曳圖片到這裡</span>
+        <span class="upload-sub">JPG、PNG、WEBP</span>
+        <input id="fileInput" type="file" accept="image/*" />
+      </label>
+
+      <div class="control-group">
+        <div class="control-head">
+          <label for="threshold">臨界值</label>
+          <output id="thresholdValue">128</output>
+        </div>
+        <input id="threshold" type="range" min="0" max="255" value="128" />
+      </div>
+
+      <div class="control-group">
+        <div class="control-head">
+          <label for="cellSize">網點大小</label>
+          <output id="cellSizeValue">8 px</output>
+        </div>
+        <input id="cellSize" type="range" min="3" max="32" value="8" />
+      </div>
+
+      <div class="control-group">
+        <div class="control-head">
+          <label for="contrast">對比</label>
+          <output id="contrastValue">0</output>
+        </div>
+        <input id="contrast" type="range" min="-100" max="100" value="0" />
+      </div>
+
+      <div class="control-group">
+        <div class="control-head">
+          <label for="angle">網點角度</label>
+          <output id="angleValue">45°</output>
+        </div>
+        <input id="angle" type="range" min="0" max="180" value="45" />
+      </div>
+
+      <div class="control-group">
+        <div class="control-head">
+          <label for="density">密度</label>
+          <output id="densityValue">100%</output>
+        </div>
+        <input id="density" type="range" min="40" max="180" value="100" />
+      </div>
+
+      <div class="control-group">
+        <div class="group-label">網點形狀</div>
+        <div class="shape-grid">
+          <button class="shape-btn active" data-shape="dots" type="button">
+            <span class="shape-icon dots"></span><span>圓點</span>
+          </button>
+          <button class="shape-btn" data-shape="lines" type="button">
+            <span class="shape-icon lines"></span><span>線條</span>
+          </button>
+          <button class="shape-btn" data-shape="diamond" type="button">
+            <span class="shape-icon diamond"></span><span>菱形</span>
+          </button>
+          <button class="shape-btn" data-shape="square" type="button">
+            <span class="shape-icon square"></span><span>方形</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="toggle-grid">
+        <label class="toggle-row">
+          <span>黑白反轉</span>
+          <input id="invert" type="checkbox">
+        </label>
+        <label class="toggle-row">
+          <span>雷雕模式</span>
+          <input id="laserMode" type="checkbox">
+        </label>
+        <label class="toggle-row">
+          <span>原圖對照</span>
+          <input id="compareMode" type="checkbox">
+        </label>
+      </div>
+
+      <div class="buttons export-buttons">
+        <button id="jpgBtn" class="primary" disabled>輸出 JPG</button>
+        <button id="pngBtn" class="primary" disabled>透明 PNG</button>
+        <button id="dxfBtn" class="accent" disabled>DXF 外框</button>
+        <button id="resetBtn" class="secondary" disabled>恢復預設</button>
+      </div>
+
+      <p class="privacy-note">
+        DXF 會把黑色圖形的外框轉成多段線；複雜圖片建議提高網點大小或使用雷雕模式，以避免向量節點過多。
+      </p>
+    </section>
+
+    <section class="panel preview-panel">
+      <div class="preview-header">
+        <h2>預覽</h2>
+        <span id="imageInfo">尚未載入圖片</span>
+      </div>
+
+      <div class="compare-wrap" id="compareWrap">
+        <div class="preview-box original-box" id="originalBox" hidden>
+          <div class="preview-label">原圖</div>
+          <canvas id="originalCanvas"></canvas>
+        </div>
+
+        <div class="preview-box result-box">
+          <div class="preview-label">處理結果</div>
+          <div class="canvas-wrap">
+            <div class="empty-state" id="emptyState">
+              <div class="empty-icon">▧</div>
+              <strong>請先上傳圖片</strong>
+              <span>轉換結果會顯示在這裡</span>
+            </div>
+            <canvas id="canvas" hidden></canvas>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <canvas id="sourceCanvas" hidden></canvas>
+  <canvas id="alphaCanvas" hidden></canvas>
+  <script src="app.js"></script>
+</body>
+</html>
