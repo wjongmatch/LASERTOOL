@@ -70,6 +70,7 @@ let previewScale = 1;
 let previewOffsetX = 0;
 let previewOffsetY = 0;
 let previewDragging = false;
+let previewNeedsInitialFit = false;
 let previewDragStartX = 0;
 let previewDragStartY = 0;
 let previewDragOriginX = 0;
@@ -322,6 +323,9 @@ function handleFile(file) {
       (scale < 1 ? `（處理尺寸 ${w} × ${h}px）` : "");
 
     render();
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => resetPreviewTransform(true));
+  });
     URL.revokeObjectURL(url);
   };
 
@@ -426,6 +430,12 @@ function render() {
   resultLabel.textContent = currentMode === "halftone" ? "網點結果" : "黑線稿結果";
   if (currentMode === "lineart") renderLineArt();
   else renderHalftone();
+  if (previewNeedsInitialFit) {
+    previewNeedsInitialFit = false;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => resetPreviewTransform(true));
+    });
+  }
 }
 
 function renderHalftone() {
