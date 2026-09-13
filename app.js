@@ -349,26 +349,31 @@ function applyExpandedOutline() {
   const w = canvas.width, h = canvas.height;
   if (!w || !h) return;
 
-  const src = ctx.getImageData(0,0,w,h);
-  const mask = new Float32Array(w*h);
-  for (let i=0, p=0; i<src.data.length; i+=4, p++) {
-    const gray = (src.data[i] + src.data[i+1] + src.data[i+2]) / 3;
-    mask[p] = gray < 128 ? 1 : 0;
-  }
+  /*
+   * v6.2：
+   * 外框不再從「網點/線稿處理結果」抓輪廓，
+   * 而是固定從原始圖片抓最外層主體輪廓。
+   * 因此調整臨界值、網點大小、對比、密度等參數時，
+   * 中間的黑白細節不會再產生新的外框。
+   */
+  const subject = buildSubjectMaskFromSource(w,h);
+
+  // 將原圖外圍線條的小缺口補起來，避免背景 flood fill 穿入主體內部。
+  const bridgeRadius = Math.max(2, Math.min(6, Math.round(Math.min(w,h) / 350)));
+  let closed = binaryDilate(subject,w,h,bridgeRadius);
+  closed = binaryErode(closed,w,h,bridgeRadius);
+
+  // 保留主要主體，避免背景上的零碎雜點各自產生外框。
+  closed = keepLargestComponent(closed,w,h);
+
+  // 將主要主體內部全部視為同一塊實心區域。
+  // 眼睛、嘴巴、衣服、網點、白色孔洞等都不會被描框。
+  const outerSolid = fillInternalHoles(closed,w,h);
 
   const expand = Math.max(1, +outlineExpand.value);
-
-  // 外框輪廓固定採用 v5.9「圓滑程度 0」：
-  // 不做曲線化或額外平滑，忠實保留原始最外圍形狀。
-  const solid = new Uint8Array(w*h);
-  for (let i=0; i<solid.length; i++) solid[i] = mask[i] >= 0.5 ? 1 : 0;
-
-  // 只保留整個圖案最外層的一圈。
-  // 先把最外框包住的所有白色區域視為內部，完全忽略眼睛、文字、
-  // 網點間隙、孔洞與其他內部線條，避免它們產生任何新增外框。
-  const outerSolid = fillInternalHoles(solid,w,h);
-
   const dist = distanceFromSolid(outerSolid,w,h);
+
+  // 單一外框固定約 2 px。
   const lineWidth = 2;
   const outer = expand + lineWidth / 2;
   const inner = Math.max(0, expand - lineWidth / 2);
@@ -379,12 +384,100 @@ function applyExpandedOutline() {
     const d = dist[i];
     if (d >= inner && d <= outer) {
       const p=i*4;
-      out.data[p]=0; out.data[p+1]=0; out.data[p+2]=0; out.data[p+3]=255;
+      out.data[p]=0;
+      out.data[p+1]=0;
+      out.data[p+2]=0;
+      out.data[p+3]=255;
     }
   }
   ctx.putImageData(out,0,0);
 }
 
+function buildSubjectMaskFromSource(w,h) {
+  const src = sourceCtx.getImageData(0,0,w,h).data;
+  const mask = new Uint8Array(w*h);
+
+  // 用四角估算背景色；對一般白底、淺色底圖片都比固定抓白色穩定。
+  const samples = [
+    [0,0], [w-1,0], [0,h-1], [w-1,h-1]
+  ];
+  let br=0,bg=0,bb=0,ba=0;
+  for (const [x,y] of samples) {
+    const p=(y*w+x)*4;
+    br+=src[p]; bg+=src[p+1]; bb+=src[p+2]; ba+=src[p+3];
+  }
+  br/=4; bg/=4; bb/=4; ba/=4;
+
+  const transparentBackground = ba < 80;
+
+  for (let y=0; y<h; y++) {
+    for (let x=0; x<w; x++) {
+      const i=y*w+x, p=i*4;
+      const a=src[p+3];
+
+      if (transparentBackground) {
+        mask[i] = a > 24 ? 1 : 0;
+        continue;
+      }
+
+      if (a < 24) {
+        mask[i]=0;
+        continue;
+      }
+
+      const dr=src[p]-br, dg=src[p+1]-bg, db=src[p+2]-bb;
+      const colorDistance=Math.sqrt(dr*dr+dg*dg+db*db);
+
+      // 與背景有明顯差異就視為主體。
+      mask[i] = colorDistance > 22 ? 1 : 0;
+    }
+  }
+
+  return mask;
+}
+
+function keepLargestComponent(mask,w,h) {
+  const seen = new Uint8Array(mask.length);
+  const q = new Int32Array(mask.length);
+  let best = [];
+
+  for (let i=0; i<mask.length; i++) {
+    if (!mask[i] || seen[i]) continue;
+
+    let head=0, tail=0;
+    q[tail++]=i;
+    seen[i]=1;
+    const component=[];
+
+    while (head<tail) {
+      const idx=q[head++];
+      component.push(idx);
+      const x=idx%w, y=(idx/w)|0;
+
+      const neighbors=[
+        idx-1, idx+1, idx-w, idx+w,
+        idx-w-1, idx-w+1, idx+w-1, idx+w+1
+      ];
+
+      for (const ni of neighbors) {
+        if (ni<0 || ni>=mask.length || seen[ni] || !mask[ni]) continue;
+        const nx=ni%w, ny=(ni/w)|0;
+        if (Math.abs(nx-x)>1 || Math.abs(ny-y)>1) continue;
+        seen[ni]=1;
+        q[tail++]=ni;
+      }
+    }
+
+    if (component.length > best.length) best = component;
+  }
+
+  // 若沒有主體，直接回傳原 mask。
+  if (!best.length) return mask;
+
+  const out = new Uint8Array(mask.length);
+  for (const i of best) out[i]=1;
+  return out;
+}
 
 function fillInternalHoles(mask,w,h) {
   // 從畫布四邊的白色區域做 flood fill。
