@@ -377,14 +377,18 @@ function applyExpandedOutline() {
   const solid = new Uint8Array(w*h);
   for (let i=0; i<solid.length; i++) solid[i] = curved[i] >= 0.5 ? 1 : 0;
 
-  const dist = distanceFromSolid(solid,w,h);
+  // v5.9：只保留最外層輪廓。
+  // 先把所有被主體包住的白色孔洞填滿，避免眼睛、文字孔洞、網點間隙等內部細節也被描框。
+  const outerSolid = fillInternalHoles(solid,w,h);
+
+  const dist = distanceFromSolid(outerSolid,w,h);
   const lineWidth = 2;
   const outer = expand + lineWidth / 2;
   const inner = Math.max(0, expand - lineWidth / 2);
 
   const out = ctx.getImageData(0,0,w,h);
-  for (let i=0; i<solid.length; i++) {
-    if (solid[i]) continue;
+  for (let i=0; i<outerSolid.length; i++) {
+    if (outerSolid[i]) continue;
     const d = dist[i];
     if (d >= inner && d <= outer) {
       const p=i*4;
@@ -392,6 +396,38 @@ function applyExpandedOutline() {
     }
   }
   ctx.putImageData(out,0,0);
+}
+
+
+function fillInternalHoles(mask,w,h) {
+  // 從畫布四邊的白色區域做 flood fill。
+  // 能連到畫布邊緣的白色屬於「外部」；其餘白色都視為主體內部孔洞並填滿。
+  const outside = new Uint8Array(mask.length);
+  const qx = new Int32Array(mask.length);
+  const qy = new Int32Array(mask.length);
+  let head = 0, tail = 0;
+
+  const push = (x,y) => {
+    if (x<0 || x>=w || y<0 || y>=h) return;
+    const i=y*w+x;
+    if (mask[i] || outside[i]) return;
+    outside[i]=1;
+    qx[tail]=x; qy[tail]=y; tail++;
+  };
+
+  for (let x=0; x<w; x++) { push(x,0); push(x,h-1); }
+  for (let y=0; y<h; y++) { push(0,y); push(w-1,y); }
+
+  while (head < tail) {
+    const x=qx[head], y=qy[head]; head++;
+    push(x-1,y); push(x+1,y); push(x,y-1); push(x,y+1);
+  }
+
+  const out = new Uint8Array(mask.length);
+  for (let i=0; i<mask.length; i++) {
+    out[i] = mask[i] || !outside[i] ? 1 : 0;
+  }
+  return out;
 }
 
 function smoothFloatMask(src,w,h,radius,passes) {
