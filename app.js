@@ -19,6 +19,11 @@ const emptyState = $("emptyState");
 const imageInfo = $("imageInfo");
 const resultLabel = $("resultLabel");
 const toggleOriginalBtn = $("toggleOriginalBtn");
+const previewViewport = $("previewViewport");
+const canvasStage = $("canvasStage");
+const zoomOutBtn = $("zoomOutBtn");
+const zoomResetBtn = $("zoomResetBtn");
+const zoomInBtn = $("zoomInBtn");
 
 const jpgBtn = $("jpgBtn");
 const pngBtn = $("pngBtn");
@@ -61,6 +66,14 @@ let currentMode = window.LASERTOOL_SELECTED_MODE || null;
 let currentShape = "dots";
 let renderTimer = null;
 let showingOriginal = false;
+let previewScale = 1;
+let previewOffsetX = 0;
+let previewOffsetY = 0;
+let previewDragging = false;
+let previewDragStartX = 0;
+let previewDragStartY = 0;
+let previewDragOriginX = 0;
+let previewDragOriginY = 0;
 
 // 模式按鈕由 index.html 的 LASERTOOL_ENTER() 直接處理。
 window.addEventListener("lasertool-mode-change", (event) => {
@@ -113,6 +126,86 @@ toggleOriginalBtn.addEventListener("click", () => {
   } else {
     render();
   }
+});
+
+
+function applyPreviewTransform() {
+  canvasStage.style.transform = `translate(${previewOffsetX}px, ${previewOffsetY}px) scale(${previewScale})`;
+  zoomResetBtn.textContent = `${Math.round(previewScale * 100)}%`;
+}
+
+function resetPreviewTransform(fit = true) {
+  if (!previewViewport || !canvas.width || !canvas.height) return;
+  if (fit) {
+    const margin = 24;
+    const vw = Math.max(1, previewViewport.clientWidth - margin * 2);
+    const vh = Math.max(1, previewViewport.clientHeight - margin * 2);
+    previewScale = Math.min(1, vw / canvas.width, vh / canvas.height);
+  } else {
+    previewScale = 1;
+  }
+  const rw = canvas.width * previewScale;
+  const rh = canvas.height * previewScale;
+  previewOffsetX = Math.max(12, (previewViewport.clientWidth - rw) / 2);
+  previewOffsetY = Math.max(12, (previewViewport.clientHeight - rh) / 2);
+  applyPreviewTransform();
+}
+
+function setPreviewScale(nextScale, anchorX = null, anchorY = null) {
+  if (!previewViewport) return;
+  const oldScale = previewScale;
+  const newScale = Math.max(0.1, Math.min(5, nextScale));
+  const rect = previewViewport.getBoundingClientRect();
+  const ax = anchorX ?? rect.width / 2;
+  const ay = anchorY ?? rect.height / 2;
+  const contentX = (ax - previewOffsetX) / oldScale;
+  const contentY = (ay - previewOffsetY) / oldScale;
+  previewScale = newScale;
+  previewOffsetX = ax - contentX * newScale;
+  previewOffsetY = ay - contentY * newScale;
+  applyPreviewTransform();
+}
+
+zoomInBtn.addEventListener("click", () => setPreviewScale(previewScale * 1.2));
+zoomOutBtn.addEventListener("click", () => setPreviewScale(previewScale / 1.2));
+zoomResetBtn.addEventListener("click", () => resetPreviewTransform(false));
+
+previewViewport.addEventListener("wheel", e => {
+  if (!img) return;
+  e.preventDefault();
+  const rect = previewViewport.getBoundingClientRect();
+  const factor = e.deltaY < 0 ? 1.12 : 1/1.12;
+  setPreviewScale(previewScale * factor, e.clientX - rect.left, e.clientY - rect.top);
+},{passive:false});
+
+previewViewport.addEventListener("pointerdown", e => {
+  if (!img) return;
+  previewDragging = true;
+  previewViewport.classList.add("dragging");
+  previewDragStartX = e.clientX;
+  previewDragStartY = e.clientY;
+  previewDragOriginX = previewOffsetX;
+  previewDragOriginY = previewOffsetY;
+  previewViewport.setPointerCapture(e.pointerId);
+});
+
+previewViewport.addEventListener("pointermove", e => {
+  if (!previewDragging) return;
+  previewOffsetX = previewDragOriginX + (e.clientX - previewDragStartX);
+  previewOffsetY = previewDragOriginY + (e.clientY - previewDragStartY);
+  applyPreviewTransform();
+});
+
+function endPreviewDrag(e){
+  if (!previewDragging) return;
+  previewDragging = false;
+  previewViewport.classList.remove("dragging");
+  try { previewViewport.releasePointerCapture(e.pointerId); } catch(_) {}
+}
+previewViewport.addEventListener("pointerup", endPreviewDrag);
+previewViewport.addEventListener("pointercancel", endPreviewDrag);
+window.addEventListener("resize", () => {
+  if (img) resetPreviewTransform(true);
 });
 
 fileInput.addEventListener("change", e => handleFile(e.target.files?.[0]));
@@ -196,7 +289,7 @@ function handleFile(file) {
 
     emptyState.hidden = true;
     canvas.hidden = false;
-    [jpgBtn,pngBtn,dxfBtn,resetBtn,toggleOriginalBtn].forEach(b => b.disabled = false);
+    [jpgBtn,pngBtn,dxfBtn,resetBtn,toggleOriginalBtn,zoomOutBtn,zoomResetBtn,zoomInBtn].forEach(b => b.disabled = false);
 
     imageInfo.textContent =
       `${image.naturalWidth} × ${image.naturalHeight}px` +

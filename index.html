@@ -4,14 +4,31 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#111111" />
-  <title>LASERTOOL v6.7</title>
-  <link rel="stylesheet" href="style.css?v=6.7" />
+  <title>LASERTOOL v6.9</title>
+  <link rel="stylesheet" href="style.css?v=6.9" />
 </head>
 <body>
 
   <!-- 進入前模式選擇 -->
   <div id="modeGate" class="mode-gate">
     <div class="mode-gate-card">
+
+      <div class="school-brand">
+        <div class="school-logo-wrap">
+          <img
+            class="school-logo"
+            src="https://upload.wikimedia.org/wikipedia/zh/thumb/e/e6/%E9%AB%98%E9%9B%84%E5%B8%82%E7%AB%8B%E5%85%AD%E9%BE%9C%E9%AB%98%E4%B8%AD.png/250px-%E9%AB%98%E9%9B%84%E5%B8%82%E7%AB%8B%E5%85%AD%E9%BE%9C%E9%AB%98%E4%B8%AD.png"
+            alt="六龜高中 LOGO"
+            referrerpolicy="no-referrer"
+            onerror="this.style.display='none'; this.nextElementSibling.style.display='grid';"
+          />
+          <span class="school-logo-fallback" aria-hidden="true">六中</span>
+        </div>
+        <div class="school-brand-text">
+          <strong>六龜高中</strong>
+          <span>科技教育推動小組</span>
+        </div>
+      </div>
       <div class="mode-gate-logo">LASERTOOL</div>
       <h1>請先選擇處理模式</h1>
       <p>選擇後會進入對應工具介面，也可以隨時返回重新選擇。</p>
@@ -37,7 +54,7 @@
       <div class="title-wrap">
         <div class="title-row">
           <div>
-            <h1>雷雕圖片轉換器 v6.7</h1>
+            <h1>雷雕圖片轉換器 v6.9</h1>
             <p id="modeDesc">目前模式：網點模式</p>
           </div>
           <button id="backModeBtn" class="back-mode-btn" type="button">← 重選模式</button>
@@ -180,19 +197,24 @@
         <div class="preview-title-actions">
           <h2>預覽</h2>
           <button id="toggleOriginalBtn" class="preview-toggle-btn" type="button" disabled>查看原圖</button>
+          <button id="zoomOutBtn" class="preview-toggle-btn" type="button" disabled>－</button>
+          <button id="zoomResetBtn" class="preview-toggle-btn" type="button" disabled>100%</button>
+          <button id="zoomInBtn" class="preview-toggle-btn" type="button" disabled>＋</button>
         </div>
         <span id="imageInfo">尚未載入圖片</span>
       </div>
 
       <div class="preview-box result-box">
         <div class="preview-label" id="resultLabel">處理結果</div>
-        <div class="canvas-wrap">
+        <div id="previewViewport" class="canvas-wrap preview-viewport">
           <div class="empty-state" id="emptyState">
             <div class="empty-icon">▧</div>
             <strong>請先上傳圖片</strong>
             <span>處理結果會顯示在這裡</span>
           </div>
-          <canvas id="canvas" hidden></canvas>
+          <div id="canvasStage" class="canvas-stage">
+            <canvas id="canvas" hidden></canvas>
+          </div>
         </div>
       </div>
     </section>
@@ -226,6 +248,6 @@
     };
   </script>
 
-  <script src="app.js?v=6.7"></script>
+  <script src="app.js?v=6.9"></script>
 </body>
 </html>
