@@ -28,6 +28,7 @@ const zoomInBtn = $("zoomInBtn");
 const jpgBtn = $("jpgBtn");
 const pngBtn = $("pngBtn");
 const dxfBtn = $("dxfBtn");
+const outerDxfBtn = $("outerDxfBtn");
 const resetBtn = $("resetBtn");
 
 const threshold = $("threshold");
@@ -295,6 +296,7 @@ resetBtn.addEventListener("click", resetControls);
 jpgBtn.addEventListener("click", exportJPG);
 pngBtn.addEventListener("click", exportTransparentPNG);
 dxfBtn.addEventListener("click", exportDXF);
+outerDxfBtn.addEventListener("click", exportOuterDXF);
 
 function handleFile(file) {
   if (!file) return;
@@ -324,7 +326,7 @@ function handleFile(file) {
 
     emptyState.hidden = true;
     canvas.hidden = false;
-    [jpgBtn,pngBtn,dxfBtn,resetBtn,toggleOriginalBtn,zoomOutBtn,zoomResetBtn,zoomInBtn].forEach(b => b.disabled = false);
+    [jpgBtn,pngBtn,dxfBtn,outerDxfBtn,resetBtn,toggleOriginalBtn,zoomOutBtn,zoomResetBtn,zoomInBtn].forEach(b => b.disabled = false);
 
     imageInfo.textContent =
       `${image.naturalWidth} × ${image.naturalHeight}px` +
@@ -1162,6 +1164,63 @@ function exportDXF(){
   a.download=currentMode==="lineart" ? "lineart-outline.dxf" : "halftone-outline.dxf";
   a.click();
 
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+
+
+function exportOuterDXF(){
+  if(!img)return;
+
+  // 與畫面上的「增加外框」使用完全相同的主體判定，
+  // 但 DXF 只輸出最外圍那一條封閉線，不包含任何內部圖案。
+  const w=canvas.width,h=canvas.height;
+  const pad=getOutputPadding();
+
+  const subject=buildSubjectMaskFromSource(w,h,pad);
+  let grouped=removeTinyComponents(subject,w,h);
+
+  const groupRadius=Math.max(8,Math.min(28,Math.round(Math.min(w,h)/32)));
+  grouped=binaryDilate(grouped,w,h,groupRadius);
+  grouped=keepLargestComponent(grouped,w,h);
+  grouped=binaryErode(grouped,w,h,groupRadius);
+
+  const bridgeRadius=Math.max(2,Math.min(5,Math.round(Math.min(w,h)/420)));
+  grouped=binaryDilate(grouped,w,h,bridgeRadius);
+  grouped=binaryErode(grouped,w,h,bridgeRadius);
+
+  const outerSolid=fillInternalHoles(grouped,w,h);
+
+  // DXF 外框沿用目前「外框外擴比例」。
+  // 即使畫面沒有勾選增加外框，也可直接輸出該距離的外輪廓。
+  const expand=getOutlineExpandPixels();
+  const expanded=expand>0 ? binaryDilate(outerSolid,w,h,expand) : outerSolid;
+
+  // 再填一次孔洞，保證 DXF 不會包含眼睛、文字孔洞、網點等內部線。
+  const finalSolid=fillInternalHoles(expanded,w,h);
+
+  const segments=outlineSegments(finalSolid,w,h);
+  let polylines=chainSegments(segments);
+
+  // 理論上 finalSolid 只有一個最外圍封閉輪廓；
+  // 再保險只留下面積最大的封閉線。
+  if(polylines.length>1){
+    const area=pts=>{
+      let a=0;
+      for(let i=0;i<pts.length-1;i++){
+        a+=pts[i][0]*pts[i+1][1]-pts[i+1][0]*pts[i][1];
+      }
+      return Math.abs(a/2);
+    };
+    polylines=[polylines.reduce((best,p)=>area(p)>area(best)?p:best,polylines[0])];
+  }
+
+  const dxf=buildDXF(polylines,1,h);
+  const blob=new Blob([dxf],{type:"application/dxf;charset=utf-8"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url;
+  a.download="outer-outline-only.dxf";
+  a.click();
   setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 
