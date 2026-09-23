@@ -1155,20 +1155,23 @@ function exportDXF(){
 
   let segments;
 
+  let polylines;
+
   if(currentMode==="lineart"){
     /*
-     * v6.18.3：
-     * 黑線稿模式的「DXF 檔案」就是完整描圖。
-     * 畫面上所有黑色線稿的邊界全部輸出：
-     * 外框、內部線、孔洞、文字、眼睛、細節都保留，不做刪除。
+     * v6.18.4：
+     * 畫面上的黑線稿完全不改，只在按下 DXF 檔案時處理。
+     * 將目前已經產生好的黑色筆畫縮成「單一中心線」：
+     * 外框一條、內部每條細節也各一條，不再把筆畫左右兩側各描一次。
      */
-    segments=outlineSegments(binary,sw,sh);
+    const centerline=thinDXFMask(binary,sw,sh);
+    polylines=skeletonDXFPolylines(centerline,sw,sh);
   }else{
-    // 網點模式維持原功能
+    // 網點模式維持 v6.18 原功能
     segments=outlineSegments(binary,sw,sh);
+    polylines=chainSegments(segments);
   }
 
-  const polylines=chainSegments(segments);
   const dxf=buildDXF(polylines,1/scale,h);
 
   const blob=new Blob([dxf],{type:"application/dxf;charset=utf-8"});
@@ -1241,6 +1244,99 @@ function allComponentsOuterBoundarySegments(bin,w,h){
     }
   }
   return seg;
+}
+
+
+function thinDXFMask(src,w,h){
+  // 只供 DXF 輸出使用，不影響黑線稿預覽。
+  // Zhang-Suen thinning：把有寬度的黑色筆畫收斂成約 1px 中心線。
+  const a=new Uint8Array(src);
+  const mark=new Uint8Array(a.length);
+  let changed=true;
+
+  const px=(x,y)=>a[y*w+x]?1:0;
+  const trans=(p2,p3,p4,p5,p6,p7,p8,p9)=>{
+    const q=[p2,p3,p4,p5,p6,p7,p8,p9,p2];
+    let n=0;
+    for(let i=0;i<8;i++) if(q[i]===0&&q[i+1]===1)n++;
+    return n;
+  };
+
+  while(changed){
+    changed=false;
+    mark.fill(0);
+    for(let y=1;y<h-1;y++)for(let x=1;x<w-1;x++){
+      const i=y*w+x;if(!a[i])continue;
+      const p2=px(x,y-1),p3=px(x+1,y-1),p4=px(x+1,y),p5=px(x+1,y+1);
+      const p6=px(x,y+1),p7=px(x-1,y+1),p8=px(x-1,y),p9=px(x-1,y-1);
+      const B=p2+p3+p4+p5+p6+p7+p8+p9,A=trans(p2,p3,p4,p5,p6,p7,p8,p9);
+      if(B>=2&&B<=6&&A===1&&p2*p4*p6===0&&p4*p6*p8===0)mark[i]=1;
+    }
+    for(let i=0;i<a.length;i++)if(mark[i]){a[i]=0;changed=true}
+
+    mark.fill(0);
+    for(let y=1;y<h-1;y++)for(let x=1;x<w-1;x++){
+      const i=y*w+x;if(!a[i])continue;
+      const p2=px(x,y-1),p3=px(x+1,y-1),p4=px(x+1,y),p5=px(x+1,y+1);
+      const p6=px(x,y+1),p7=px(x-1,y+1),p8=px(x-1,y),p9=px(x-1,y-1);
+      const B=p2+p3+p4+p5+p6+p7+p8+p9,A=trans(p2,p3,p4,p5,p6,p7,p8,p9);
+      if(B>=2&&B<=6&&A===1&&p2*p4*p8===0&&p2*p6*p8===0)mark[i]=1;
+    }
+    for(let i=0;i<a.length;i++)if(mark[i]){a[i]=0;changed=true}
+  }
+  return a;
+}
+
+function skeletonDXFPolylines(bin,w,h){
+  // 將單像素骨架轉為 DXF 折線；所有內部線條都保留一次。
+  const dirs=[[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]];
+  const id=(x,y)=>y*w+x;
+  const ns=(x,y)=>{
+    const out=[];
+    for(const [dx,dy] of dirs){
+      const nx=x+dx,ny=y+dy;
+      if(nx>=0&&nx<w&&ny>=0&&ny<h&&bin[id(nx,ny)])out.push([nx,ny]);
+    }
+    return out;
+  };
+  const key=(a,b)=>{
+    const ia=id(a[0],a[1]),ib=id(b[0],b[1]);
+    return ia<ib?`${ia}:${ib}`:`${ib}:${ia}`;
+  };
+  const used=new Set(),lines=[];
+
+  const trace=(a,b)=>{
+    const line=[[a[0]+.5,a[1]+.5],[b[0]+.5,b[1]+.5]];
+    let prev=a,cur=b;
+    used.add(key(prev,cur));
+    while(true){
+      const next=ns(cur[0],cur[1]).filter(p=>!(p[0]===prev[0]&&p[1]===prev[1]));
+      if(next.length!==1)break;
+      const n=next[0],k=key(cur,n);
+      if(used.has(k))break;
+      used.add(k);line.push([n[0]+.5,n[1]+.5]);prev=cur;cur=n;
+    }
+    return line;
+  };
+
+  // 端點與交叉點
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++)if(bin[id(x,y)]){
+    const list=ns(x,y);
+    if(list.length!==2){
+      for(const n of list){
+        const k=key([x,y],n);
+        if(!used.has(k))lines.push(trace([x,y],n));
+      }
+    }
+  }
+  // 封閉環
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++)if(bin[id(x,y)]){
+    for(const n of ns(x,y)){
+      const k=key([x,y],n);
+      if(!used.has(k))lines.push(trace([x,y],n));
+    }
+  }
+  return lines.filter(line=>line.length>=2);
 }
 
 function exportOuterDXF(){
