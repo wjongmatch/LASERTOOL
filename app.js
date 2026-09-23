@@ -1157,15 +1157,14 @@ function exportDXF(){
 
   if(currentMode==="lineart"){
     /*
-     * v6.18.1：
-     * 黑線稿畫面與處理方式完全維持 v6.18。
-     * 只修正「DXF 檔案」按鈕的描線：
-     * 不再把黑色筆畫的內、外兩側都當成 DXF 路徑。
-     * 對每個黑色連通區只保留「面向外部白色」的最外側輪廓。
+     * v6.18.3：
+     * 黑線稿模式的「DXF 檔案」就是完整描圖。
+     * 畫面上所有黑色線稿的邊界全部輸出：
+     * 外框、內部線、孔洞、文字、眼睛、細節都保留，不做刪除。
      */
-    segments=allComponentsOuterBoundarySegments(binary,sw,sh);
+    segments=outlineSegments(binary,sw,sh);
   }else{
-    // 網點模式完全維持 v6.18 原功能
+    // 網點模式維持原功能
     segments=outlineSegments(binary,sw,sh);
   }
 
