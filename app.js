@@ -1184,45 +1184,61 @@ function exportDXF(){
 
 function allComponentsOuterBoundarySegments(bin,w,h){
   /*
-   * 找出所有「可由畫布外部到達的白色」。
-   * 黑色區域只輸出與這些外部白色接觸的邊。
-   * 因此筆畫內部的白洞/內圈不會形成第二條 DXF 輪廓。
-   * 各條彼此分離的黑線仍各自保留，符合 v6.18 黑線稿結果。
+   * v6.18.2：
+   * v6.18.1 是從「整張圖的外部白色」找輪廓，因此被大外框包住的
+   * 內部線條會被誤認為不是外部輪廓而消失。
+   *
+   * 現在改成「每一個黑色連通元件各自處理」：
+   * - 每條分離的內部黑線都保留
+   * - 同一個粗黑線/封閉筆畫只取最外側一圈
+   * - 該筆畫自己的內孔不再產生第二圈
    */
-  const outside=new Uint8Array(w*h);
+  const seen=new Uint8Array(w*h);
   const q=new Int32Array(w*h);
-  let head=0,tail=0;
-
-  const push=(x,y)=>{
-    if(x<0||x>=w||y<0||y>=h)return;
-    const i=y*w+x;
-    if(bin[i]||outside[i])return;
-    outside[i]=1;
-    q[tail++]=i;
-  };
-
-  for(let x=0;x<w;x++){push(x,0);push(x,h-1);}
-  for(let y=0;y<h;y++){push(0,y);push(w-1,y);}
-
-  while(head<tail){
-    const i=q[head++];
-    const x=i%w,y=(i/w)|0;
-    push(x-1,y);push(x+1,y);push(x,y-1);push(x,y+1);
-  }
-
-  const isOutside=(x,y)=>{
-    if(x<0||x>=w||y<0||y>=h)return 1;
-    return outside[y*w+x];
-  };
-
   const seg=[];
-  for(let y=0;y<h;y++){
-    for(let x=0;x<w;x++){
-      if(!bin[y*w+x])continue;
-      if(isOutside(x,y-1))seg.push([[x,y],[x+1,y]]);
-      if(isOutside(x+1,y))seg.push([[x+1,y],[x+1,y+1]]);
-      if(isOutside(x,y+1))seg.push([[x+1,y+1],[x,y+1]]);
-      if(isOutside(x-1,y))seg.push([[x,y+1],[x,y]]);
+
+  const neighbors8=(x,y,fn)=>{
+    for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
+      if(dx===0&&dy===0)continue;
+      const nx=x+dx,ny=y+dy;
+      if(nx>=0&&nx<w&&ny>=0&&ny<h)fn(nx,ny);
+    }
+  };
+
+  for(let seed=0;seed<bin.length;seed++){
+    if(!bin[seed]||seen[seed])continue;
+
+    let head=0,tail=0;
+    q[tail++]=seed; seen[seed]=1;
+    const comp=[];
+    let minX=w,minY=h,maxX=0,maxY=0;
+
+    while(head<tail){
+      const i=q[head++],x=i%w,y=(i/w)|0;
+      comp.push(i);
+      if(x<minX)minX=x;if(x>maxX)maxX=x;
+      if(y<minY)minY=y;if(y>maxY)maxY=y;
+      neighbors8(x,y,(nx,ny)=>{
+        const ni=ny*w+nx;
+        if(bin[ni]&&!seen[ni]){seen[ni]=1;q[tail++]=ni;}
+      });
+    }
+
+    // 在元件自己的小畫布中建立 mask，四周留 1px 白邊。
+    const bw=maxX-minX+3,bh=maxY-minY+3;
+    const mask=new Uint8Array(bw*bh);
+    for(const i of comp){
+      const x=i%w,y=(i/w)|0;
+      mask[(y-minY+1)*bw+(x-minX+1)]=1;
+    }
+
+    // 填掉「這個筆畫本身」的內孔，避免一條粗線輸出內外兩圈。
+    const solid=fillInternalHoles(mask,bw,bh);
+
+    // 只描這個實心元件的最外側邊界。
+    const local=outlineSegments(solid,bw,bh);
+    for(const pair of local){
+      seg.push(pair.map(([x,y])=>[x+minX-1,y+minY-1]));
     }
   }
   return seg;
