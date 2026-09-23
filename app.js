@@ -1341,62 +1341,30 @@ function skeletonDXFPolylines(bin,w,h){
 
 function exportOuterDXF(){
   if(!img)return;
-
-  /*
-   * v6.18.5：
-   * DXF 外框不再從畫面上「有厚度的外框線」描邊，
-   * 而是直接建立一個實心外擴區域，再只取該區域最外側邊界。
-   * 最終 DXF 只會輸出一條封閉切割線，不會有內外兩層。
-   */
-  const w=canvas.width,h=canvas.height;
-  const pad=getOutputPadding();
-
-  const subject=buildSubjectMaskFromSource(w,h,pad);
-  let grouped=removeTinyComponents(subject,w,h);
-
-  const groupRadius=Math.max(8,Math.min(28,Math.round(Math.min(w,h)/32)));
-  grouped=binaryDilate(grouped,w,h,groupRadius);
-  grouped=keepLargestComponent(grouped,w,h);
-  grouped=binaryErode(grouped,w,h,groupRadius);
-
-  const bridgeRadius=Math.max(2,Math.min(5,Math.round(Math.min(w,h)/420)));
-  grouped=binaryDilate(grouped,w,h,bridgeRadius);
-  grouped=binaryErode(grouped,w,h,bridgeRadius);
-
-  let solid=fillInternalHoles(grouped,w,h);
-
+  const w=canvas.width,h=canvas.height,pad=getOutputPadding();
+  let solid=removeTinyComponents(buildSubjectMaskFromSource(w,h,pad),w,h);
+  const gr=Math.max(8,Math.min(28,Math.round(Math.min(w,h)/32)));
+  solid=binaryDilate(solid,w,h,gr);
+  solid=keepLargestComponent(solid,w,h);
+  solid=binaryErode(solid,w,h,gr);
+  const br=Math.max(2,Math.min(5,Math.round(Math.min(w,h)/420)));
+  solid=binaryDilate(solid,w,h,br);
+  solid=binaryErode(solid,w,h,br);
+  solid=fillInternalHoles(solid,w,h);
   const expand=getOutlineExpandPixels();
-  if(expand>0) solid=binaryDilate(solid,w,h,expand);
-
-  // 再填孔，確保任何內部空白都不會形成第二圈。
+  if(expand>0)solid=binaryDilate(solid,w,h,expand);
   solid=fillInternalHoles(solid,w,h);
 
-  // 只取與畫布外部白色相接的邊界。
   let polylines=chainSegments(outermostBoundarySegments(solid,w,h));
-
-  // 若像素雜訊造成多個封閉區，只保留面積最大的最外圈。
   if(polylines.length>1){
-    const area=pts=>{
-      let a=0;
-      for(let i=0;i<pts.length-1;i++){
-        a+=pts[i][0]*pts[i+1][1]-pts[i+1][0]*pts[i][1];
-      }
-      return Math.abs(a/2);
-    };
+    const area=p=>{let a=0;for(let i=0;i<p.length-1;i++)a+=p[i][0]*p[i+1][1]-p[i+1][0]*p[i][1];return Math.abs(a/2)};
     let best=polylines[0];
-    for(let i=1;i<polylines.length;i++){
-      if(area(polylines[i])>area(best)) best=polylines[i];
-    }
+    for(let i=1;i<polylines.length;i++)if(area(polylines[i])>area(best))best=polylines[i];
     polylines=[best];
   }
-
-  const dxf=buildDXF(polylines,1,h);
-  const blob=new Blob([dxf],{type:"application/dxf;charset=utf-8"});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement("a");
-  a.href=url;
-  a.download="outer-outline-single-line.dxf";
-  a.click();
+  const blob=new Blob([buildDXF(polylines,1,h)],{type:"application/dxf;charset=utf-8"});
+  const url=URL.createObjectURL(blob),a=document.createElement("a");
+  a.href=url;a.download="outer-outline-single-line.dxf";a.click();
   setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 
