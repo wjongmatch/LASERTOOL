@@ -505,17 +505,16 @@ function renderLineArt() {
     binary[i] = edges[i] >= thresholdValue ? 1 : 0;
   }
 
-  if (detail > 0) {
-    binary = removeSparse(binary,w,h,detail);
-  }
+  if (detail > 0) binary = removeSparse(binary,w,h,detail);
+  if (majorOutline.checked) binary = keepStrongNeighborhood(binary,w,h);
 
-  if (majorOutline.checked) {
-    binary = keepStrongNeighborhood(binary,w,h);
-  }
+  // v6.19：Sobel 常會把同一條黑線抓成左右兩側兩條邊。
+  // 先做骨架細線化，把每一組線條收斂成單一中心線，再依「線條粗細」加粗。
+  binary = thinBinary(binary,w,h);
 
   const thickness = +lineWidth.value;
   if (thickness > 1) {
-    binary = dilate(binary,w,h,thickness - 1);
+    binary = dilate(binary,w,h,Math.max(1, Math.ceil((thickness - 1) / 2)));
   }
 
   const pad = getOutputPadding();
@@ -536,6 +535,50 @@ function renderLineArt() {
 
   ctx.putImageData(out,pad,pad);
   if (outlineMode.checked) applyExpandedOutline();
+}
+
+function thinBinary(src,w,h){
+  // Zhang-Suen thinning：把粗邊/雙邊收斂為約 1px 的中心骨架。
+  const a = new Uint8Array(src);
+  let changed = true;
+  const marker = new Uint8Array(a.length);
+
+  const n = (x,y) => a[y*w+x] ? 1 : 0;
+  const transitions = (p2,p3,p4,p5,p6,p7,p8,p9) => {
+    const q=[p2,p3,p4,p5,p6,p7,p8,p9,p2];
+    let t=0;
+    for(let i=0;i<8;i++) if(q[i]===0 && q[i+1]===1) t++;
+    return t;
+  };
+
+  while(changed){
+    changed=false;
+    marker.fill(0);
+
+    for(let y=1;y<h-1;y++) for(let x=1;x<w-1;x++){
+      const i=y*w+x;
+      if(!a[i]) continue;
+      const p2=n(x,y-1), p3=n(x+1,y-1), p4=n(x+1,y), p5=n(x+1,y+1);
+      const p6=n(x,y+1), p7=n(x-1,y+1), p8=n(x-1,y), p9=n(x-1,y-1);
+      const B=p2+p3+p4+p5+p6+p7+p8+p9;
+      const A=transitions(p2,p3,p4,p5,p6,p7,p8,p9);
+      if(B>=2 && B<=6 && A===1 && p2*p4*p6===0 && p4*p6*p8===0) marker[i]=1;
+    }
+    for(let i=0;i<a.length;i++) if(marker[i]){a[i]=0;changed=true;}
+
+    marker.fill(0);
+    for(let y=1;y<h-1;y++) for(let x=1;x<w-1;x++){
+      const i=y*w+x;
+      if(!a[i]) continue;
+      const p2=n(x,y-1), p3=n(x+1,y-1), p4=n(x+1,y), p5=n(x+1,y+1);
+      const p6=n(x,y+1), p7=n(x-1,y+1), p8=n(x-1,y), p9=n(x-1,y-1);
+      const B=p2+p3+p4+p5+p6+p7+p8+p9;
+      const A=transitions(p2,p3,p4,p5,p6,p7,p8,p9);
+      if(B>=2 && B<=6 && A===1 && p2*p4*p8===0 && p2*p6*p8===0) marker[i]=1;
+    }
+    for(let i=0;i<a.length;i++) if(marker[i]){a[i]=0;changed=true;}
+  }
+  return a;
 }
 
 function applyExpandedOutline() {
@@ -1128,6 +1171,40 @@ function exportTransparentPNG(){
 function exportDXF(){
   if(!img)return;
 
+  // 黑線稿模式：直接輸出「單線中心線」，不再把黑線左右兩側各描一次。
+  if(currentMode==="lineart"){
+    const w=sourceCanvas.width,h=sourceCanvas.height;
+    const src=sourceCtx.getImageData(0,0,w,h);
+    let gray=rgbaToGray(src.data,w,h);
+    const blurRadius=+smooth.value;
+    if(blurRadius>0) gray=boxBlur(gray,w,h,blurRadius);
+
+    const edges=sobel(gray,w,h);
+    let binary=new Uint8Array(w*h);
+    const thresholdValue=+edgeSensitivity.value;
+    for(let i=0;i<edges.length;i++) binary[i]=edges[i]>=thresholdValue?1:0;
+
+    const detail=+detailFilter.value;
+    if(detail>0) binary=removeSparse(binary,w,h,detail);
+    if(majorOutline.checked) binary=keepStrongNeighborhood(binary,w,h);
+    binary=thinBinary(binary,w,h);
+
+    const polylines=skeletonToPolylines(binary,w,h);
+    const pad=getOutputPadding();
+    const shifted=polylines.map(line=>line.map(p=>[p[0]+pad,p[1]+pad]));
+    const dxf=buildDXF(shifted,1,canvas.height);
+
+    const blob=new Blob([dxf],{type:"application/dxf;charset=utf-8"});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");
+    a.href=url;
+    a.download="lineart-single-line.dxf";
+    a.click();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+    return;
+  }
+
+  // 網點模式維持原本 DXF 功能。
   const w=canvas.width,h=canvas.height;
   const maxSide=900;
   const scale=Math.min(1,maxSide/Math.max(w,h));
@@ -1135,93 +1212,126 @@ function exportDXF(){
   const sh=Math.max(1,Math.round(h*scale));
 
   const temp=document.createElement("canvas");
-  temp.width=sw;
-  temp.height=sh;
-
+  temp.width=sw; temp.height=sh;
   const tctx=temp.getContext("2d",{willReadFrequently:true});
   tctx.imageSmoothingEnabled=false;
   tctx.drawImage(canvas,0,0,sw,sh);
 
   const imgData=tctx.getImageData(0,0,sw,sh).data;
   const binary=new Uint8Array(sw*sh);
-
-  for(let y=0;y<sh;y++){
-    for(let x=0;x<sw;x++){
-      const i=(y*sw+x)*4;
-      const gray=(imgData[i]+imgData[i+1]+imgData[i+2])/3;
-      binary[y*sw+x]=gray<128?1:0;
-    }
+  for(let y=0;y<sh;y++) for(let x=0;x<sw;x++){
+    const i=(y*sw+x)*4;
+    const gray=(imgData[i]+imgData[i+1]+imgData[i+2])/3;
+    binary[y*sw+x]=gray<128?1:0;
   }
 
-  const segments=outlineSegments(binary,sw,sh);
-  const polylines=chainSegments(segments);
+  const polylines=chainSegments(outlineSegments(binary,sw,sh));
   const dxf=buildDXF(polylines,1/scale,h);
-
   const blob=new Blob([dxf],{type:"application/dxf;charset=utf-8"});
   const url=URL.createObjectURL(blob);
   const a=document.createElement("a");
   a.href=url;
-  a.download=currentMode==="lineart" ? "lineart-outline.dxf" : "halftone-outline.dxf";
+  a.download="halftone-outline.dxf";
   a.click();
-
   setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 
+function skeletonToPolylines(bin,w,h){
+  // 將 1px 骨架轉成 DXF 單線折線。端點/交叉點會自然分段。
+  const dirs=[[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]];
+  const idx=(x,y)=>y*w+x;
+  const neighbors=(x,y)=>{
+    const out=[];
+    for(const [dx,dy] of dirs){
+      const nx=x+dx,ny=y+dy;
+      if(nx>=0&&nx<w&&ny>=0&&ny<h&&bin[idx(nx,ny)]) out.push([nx,ny]);
+    }
+    return out;
+  };
+  const edgeKey=(a,b)=>{
+    const ia=idx(a[0],a[1]),ib=idx(b[0],b[1]);
+    return ia<ib?`${ia}:${ib}`:`${ib}:${ia}`;
+  };
+  const used=new Set(), lines=[];
+
+  const trace=(start,next)=>{
+    const line=[[start[0]+.5,start[1]+.5],[next[0]+.5,next[1]+.5]];
+    let prev=start,cur=next;
+    used.add(edgeKey(prev,cur));
+    while(true){
+      const ns=neighbors(cur[0],cur[1]).filter(p=>!(p[0]===prev[0]&&p[1]===prev[1]));
+      if(ns.length!==1) break;
+      const n=ns[0], k=edgeKey(cur,n);
+      if(used.has(k)) break;
+      used.add(k); line.push([n[0]+.5,n[1]+.5]); prev=cur; cur=n;
+    }
+    return line;
+  };
+
+  // 先從端點與交叉點開始。
+  for(let y=0;y<h;y++) for(let x=0;x<w;x++) if(bin[idx(x,y)]){
+    const ns=neighbors(x,y);
+    if(ns.length!==2){
+      for(const n of ns){
+        const k=edgeKey([x,y],n);
+        if(!used.has(k)) lines.push(trace([x,y],n));
+      }
+    }
+  }
+  // 再處理純封閉環。
+  for(let y=0;y<h;y++) for(let x=0;x<w;x++) if(bin[idx(x,y)]){
+    for(const n of neighbors(x,y)){
+      const k=edgeKey([x,y],n);
+      if(!used.has(k)) lines.push(trace([x,y],n));
+    }
+  }
+  return lines.filter(l=>l.length>=2);
+}
 
 function exportOuterDXF(){
   if(!img)return;
-
-  // 與畫面上的「增加外框」使用完全相同的主體判定，
-  // 但 DXF 只輸出最外圍那一條封閉線，不包含任何內部圖案。
-  const w=canvas.width,h=canvas.height;
-  const pad=getOutputPadding();
-
-  const subject=buildSubjectMaskFromSource(w,h,pad);
-  let grouped=removeTinyComponents(subject,w,h);
-
-  const groupRadius=Math.max(8,Math.min(28,Math.round(Math.min(w,h)/32)));
-  grouped=binaryDilate(grouped,w,h,groupRadius);
-  grouped=keepLargestComponent(grouped,w,h);
-  grouped=binaryErode(grouped,w,h,groupRadius);
-
-  const bridgeRadius=Math.max(2,Math.min(5,Math.round(Math.min(w,h)/420)));
-  grouped=binaryDilate(grouped,w,h,bridgeRadius);
-  grouped=binaryErode(grouped,w,h,bridgeRadius);
-
-  const outerSolid=fillInternalHoles(grouped,w,h);
-
-  // DXF 外框沿用目前「外框外擴比例」。
-  // 即使畫面沒有勾選增加外框，也可直接輸出該距離的外輪廓。
+  const w=canvas.width,h=canvas.height,pad=getOutputPadding();
+  let solid=removeTinyComponents(buildSubjectMaskFromSource(w,h,pad),w,h);
+  const gr=Math.max(8,Math.min(28,Math.round(Math.min(w,h)/32)));
+  solid=binaryDilate(solid,w,h,gr);
+  solid=keepLargestComponent(solid,w,h);
+  solid=binaryErode(solid,w,h,gr);
+  const br=Math.max(2,Math.min(5,Math.round(Math.min(w,h)/420)));
+  solid=binaryDilate(solid,w,h,br);
+  solid=binaryErode(solid,w,h,br);
+  solid=fillInternalHoles(solid,w,h);
   const expand=getOutlineExpandPixels();
-  const expanded=expand>0 ? binaryDilate(outerSolid,w,h,expand) : outerSolid;
+  if(expand>0)solid=binaryDilate(solid,w,h,expand);
+  solid=fillInternalHoles(solid,w,h);
 
-  // 再填一次孔洞，保證 DXF 不會包含眼睛、文字孔洞、網點等內部線。
-  const finalSolid=fillInternalHoles(expanded,w,h);
-
-  const segments=outlineSegments(finalSolid,w,h);
-  let polylines=chainSegments(segments);
-
-  // 理論上 finalSolid 只有一個最外圍封閉輪廓；
-  // 再保險只留下面積最大的封閉線。
+  let polylines=chainSegments(outermostBoundarySegments(solid,w,h));
   if(polylines.length>1){
-    const area=pts=>{
-      let a=0;
-      for(let i=0;i<pts.length-1;i++){
-        a+=pts[i][0]*pts[i+1][1]-pts[i+1][0]*pts[i][1];
-      }
-      return Math.abs(a/2);
-    };
-    polylines=[polylines.reduce((best,p)=>area(p)>area(best)?p:best,polylines[0])];
+    const area=p=>{let a=0;for(let i=0;i<p.length-1;i++)a+=p[i][0]*p[i+1][1]-p[i+1][0]*p[i][1];return Math.abs(a/2)};
+    let best=polylines[0];
+    for(let i=1;i<polylines.length;i++)if(area(polylines[i])>area(best))best=polylines[i];
+    polylines=[best];
   }
-
-  const dxf=buildDXF(polylines,1,h);
-  const blob=new Blob([dxf],{type:"application/dxf;charset=utf-8"});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement("a");
-  a.href=url;
-  a.download="outer-outline-only.dxf";
-  a.click();
+  const blob=new Blob([buildDXF(polylines,1,h)],{type:"application/dxf;charset=utf-8"});
+  const url=URL.createObjectURL(blob),a=document.createElement("a");
+  a.href=url;a.download="outer-outline-single-line.dxf";a.click();
   setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+
+function outermostBoundarySegments(solid,w,h){
+  const outside=new Uint8Array(w*h),q=new Int32Array(w*h);let head=0,tail=0;
+  const push=(x,y)=>{if(x<0||x>=w||y<0||y>=h)return;const i=y*w+x;if(solid[i]||outside[i])return;outside[i]=1;q[tail++]=i};
+  for(let x=0;x<w;x++){push(x,0);push(x,h-1)}
+  for(let y=0;y<h;y++){push(0,y);push(w-1,y)}
+  while(head<tail){const i=q[head++],x=i%w,y=(i/w)|0;push(x-1,y);push(x+1,y);push(x,y-1);push(x,y+1)}
+  const seg=[];
+  const out=(x,y)=>x<0||x>=w||y<0||y>=h?1:outside[y*w+x];
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++)if(solid[y*w+x]){
+    if(out(x,y-1))seg.push([[x,y],[x+1,y]]);
+    if(out(x+1,y))seg.push([[x+1,y],[x+1,y+1]]);
+    if(out(x,y+1))seg.push([[x+1,y+1],[x,y+1]]);
+    if(out(x-1,y))seg.push([[x,y+1],[x,y]]);
+  }
+  return seg;
 }
 
 function outlineSegments(bin,w,h){
