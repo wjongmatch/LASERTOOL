@@ -1143,7 +1143,7 @@ function exportDXF(){
   tctx.drawImage(canvas,0,0,sw,sh);
 
   const imgData=tctx.getImageData(0,0,sw,sh).data;
-  const binary=new Uint8Array(sw*sh);
+  let binary=new Uint8Array(sw*sh);
 
   for(let y=0;y<sh;y++){
     for(let x=0;x<sw;x++){
@@ -1153,7 +1153,22 @@ function exportDXF(){
     }
   }
 
-  const segments=outlineSegments(binary,sw,sh);
+  let segments;
+
+  if(currentMode==="lineart"){
+    /*
+     * v6.18.1：
+     * 黑線稿畫面與處理方式完全維持 v6.18。
+     * 只修正「DXF 檔案」按鈕的描線：
+     * 不再把黑色筆畫的內、外兩側都當成 DXF 路徑。
+     * 對每個黑色連通區只保留「面向外部白色」的最外側輪廓。
+     */
+    segments=allComponentsOuterBoundarySegments(binary,sw,sh);
+  }else{
+    // 網點模式完全維持 v6.18 原功能
+    segments=outlineSegments(binary,sw,sh);
+  }
+
   const polylines=chainSegments(segments);
   const dxf=buildDXF(polylines,1/scale,h);
 
@@ -1167,6 +1182,51 @@ function exportDXF(){
   setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 
+function allComponentsOuterBoundarySegments(bin,w,h){
+  /*
+   * 找出所有「可由畫布外部到達的白色」。
+   * 黑色區域只輸出與這些外部白色接觸的邊。
+   * 因此筆畫內部的白洞/內圈不會形成第二條 DXF 輪廓。
+   * 各條彼此分離的黑線仍各自保留，符合 v6.18 黑線稿結果。
+   */
+  const outside=new Uint8Array(w*h);
+  const q=new Int32Array(w*h);
+  let head=0,tail=0;
+
+  const push=(x,y)=>{
+    if(x<0||x>=w||y<0||y>=h)return;
+    const i=y*w+x;
+    if(bin[i]||outside[i])return;
+    outside[i]=1;
+    q[tail++]=i;
+  };
+
+  for(let x=0;x<w;x++){push(x,0);push(x,h-1);}
+  for(let y=0;y<h;y++){push(0,y);push(w-1,y);}
+
+  while(head<tail){
+    const i=q[head++];
+    const x=i%w,y=(i/w)|0;
+    push(x-1,y);push(x+1,y);push(x,y-1);push(x,y+1);
+  }
+
+  const isOutside=(x,y)=>{
+    if(x<0||x>=w||y<0||y>=h)return 1;
+    return outside[y*w+x];
+  };
+
+  const seg=[];
+  for(let y=0;y<h;y++){
+    for(let x=0;x<w;x++){
+      if(!bin[y*w+x])continue;
+      if(isOutside(x,y-1))seg.push([[x,y],[x+1,y]]);
+      if(isOutside(x+1,y))seg.push([[x+1,y],[x+1,y+1]]);
+      if(isOutside(x,y+1))seg.push([[x+1,y+1],[x,y+1]]);
+      if(isOutside(x-1,y))seg.push([[x,y+1],[x,y]]);
+    }
+  }
+  return seg;
+}
 
 function exportOuterDXF(){
   if(!img)return;
